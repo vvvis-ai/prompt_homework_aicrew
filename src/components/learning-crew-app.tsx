@@ -1,0 +1,602 @@
+"use client";
+
+import {
+  ArrowRight,
+  Bookmark,
+  CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock3,
+  ExternalLink,
+  Flame,
+  Home,
+  Link2,
+  LogOut,
+  Megaphone,
+  Pencil,
+  Plus,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Star,
+  Trash2,
+  Trophy,
+  UserRound,
+  X,
+} from "lucide-react";
+import Link from "next/link";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { canParticipantEdit, formatKstTime, kstDateKey } from "@/lib/time";
+import type { AppData, CalendarDay, DailyStatus, Submission } from "@/lib/types";
+
+type Tab = "home" | "submit" | "feed" | "ranking";
+
+const statusContent: Record<DailyStatus, { icon: string; title: string; detail: string; tone: string }> = {
+  completed: { icon: "✅", title: "오늘 숙제를 완료했습니다", detail: "멋져요! 오늘의 AI 활용 기록이 쌓였어요.", tone: "status-completed" },
+  pending: { icon: "⏳", title: "오늘 아직 제출하지 않았습니다", detail: "23:00까지 링크를 등록해주세요.", tone: "status-pending" },
+  missed: { icon: "❌", title: "오늘 숙제를 제출하지 못했습니다", detail: "링크 공유는 계속할 수 있어요.", tone: "status-missed" },
+  exempt: { icon: "🟦", title: "오늘은 면제일입니다", detail: "스트릭은 그대로 유지됩니다.", tone: "status-exempt" },
+  excluded: { icon: "🎉", title: "오늘은 숙제 없는 날입니다", detail: "쉬어가도 좋고, AI 활용 사례를 공유해도 좋아요.", tone: "status-excluded" },
+  future: { icon: "📅", title: "아직 오지 않은 날입니다", detail: "미래 날짜에는 상태를 표시하지 않습니다.", tone: "status-excluded" },
+  not_enrolled: { icon: "👋", title: "숙제 대상 기간이 아닙니다", detail: "참여 기간을 확인해주세요.", tone: "status-excluded" },
+};
+
+const statusMark: Record<DailyStatus, string> = {
+  completed: "✓",
+  pending: "·",
+  missed: "×",
+  exempt: "E",
+  excluded: "",
+  future: "",
+  not_enrolled: "",
+};
+
+function addDate(dateKey: string, days: number) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + days));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+}
+
+function shiftMonth(monthKey: string, amount: number) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1 + amount, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function displayDate(dateKey: string) {
+  const [year, month, day] = dateKey.split("-");
+  return `${year}.${month}.${day}`;
+}
+
+function hostLabel(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function challengeProgress(data: AppData) {
+  if (!data.challenge) return 0;
+  const start = new Date(`${data.challenge.startDate}T00:00:00Z`).getTime();
+  const end = new Date(`${data.challenge.endDate}T23:59:59Z`).getTime();
+  const now = new Date(data.now).getTime();
+  return Math.max(0, Math.min(100, Math.round(((now - start) / (end - start)) * 100)));
+}
+
+export function LearningCrewApp({ initialData }: { initialData: AppData }) {
+  const [data, setData] = useState(initialData);
+  const [participantId, setParticipantId] = useState("");
+  const [tab, setTab] = useState<Tab>("home");
+  const [feedDate, setFeedDate] = useState(kstDateKey(initialData.now));
+  const [month, setMonth] = useState(initialData.month);
+  const [search, setSearch] = useState("");
+  const [featuredOnly, setFeaturedOnly] = useState(false);
+  const [savedOnly, setSavedOnly] = useState(false);
+  const [bookmarks, setBookmarks] = useState<string[]>([]);
+  const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState("");
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setParticipantId(window.localStorage.getItem("aicrew_participant_id") ?? "");
+      try {
+        setBookmarks(JSON.parse(window.localStorage.getItem("aicrew_bookmarks") ?? "[]"));
+      } catch {
+        setBookmarks([]);
+      }
+      setHydrated(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setBusy(true);
+      const params = new URLSearchParams({
+        date: savedOnly ? "all" : feedDate,
+        month,
+        featuredOnly: String(featuredOnly),
+      });
+      if (participantId) params.set("participantId", participantId);
+      if (search.trim()) params.set("search", search.trim());
+      try {
+        const response = await fetch(`/api/app?${params}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const result = (await response.json()) as AppData & { error?: string };
+        if (!response.ok) throw new Error(result.error);
+        setData(result);
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") {
+          setToast("데이터를 새로 불러오지 못했습니다.");
+        }
+      } finally {
+        setBusy(false);
+      }
+    }, search ? 250 : 0);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [featuredOnly, feedDate, hydrated, month, participantId, savedOnly, search]);
+
+  const chooseParticipant = (id: string) => {
+    window.localStorage.setItem("aicrew_participant_id", id);
+    setParticipantId(id);
+    setTab("home");
+  };
+
+  const changeParticipant = () => {
+    window.localStorage.removeItem("aicrew_participant_id");
+    setParticipantId("");
+    setTab("home");
+  };
+
+  const toggleBookmark = (submission: Submission) => {
+    const next = bookmarks.includes(submission.id)
+      ? bookmarks.filter((id) => id !== submission.id)
+      : [...bookmarks, submission.id];
+    setBookmarks(next);
+    window.localStorage.setItem("aicrew_bookmarks", JSON.stringify(next));
+  };
+
+  const refresh = async () => {
+    const params = new URLSearchParams({
+      participantId,
+      date: savedOnly ? "all" : feedDate,
+      month,
+      featuredOnly: String(featuredOnly),
+    });
+    if (search.trim()) params.set("search", search.trim());
+    const response = await fetch(`/api/app?${params}`, { cache: "no-store" });
+    const result = (await response.json()) as AppData;
+    if (response.ok) setData(result);
+  };
+
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    setBusy(true);
+    setToast("");
+    const response = await fetch("/api/submissions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        participantId,
+        title: formData.get("title"),
+        url: formData.get("url"),
+        description: formData.get("description"),
+        password: formData.get("password"),
+      }),
+    });
+    const result = (await response.json()) as { error?: string; onTime?: boolean };
+    setBusy(false);
+    if (!response.ok) {
+      setToast(result.error ?? "링크를 등록하지 못했습니다.");
+      return;
+    }
+    form.reset();
+    setToast(
+      result.onTime
+        ? "✅ 오늘 숙제를 완료했습니다."
+        : "✅ 링크가 등록되었습니다. 마감시간 이후 등록되어 오늘 숙제 완료에는 반영되지 않습니다.",
+    );
+    await refresh();
+  };
+
+  const editSubmission = async (submission: Submission) => {
+    const password = window.prompt("수정·삭제 비밀번호를 입력해주세요.");
+    if (!password) return;
+    const title = window.prompt("제목 (비워도 됩니다)", submission.title ?? "");
+    if (title === null) return;
+    const url = window.prompt("링크", submission.url);
+    if (!url) return;
+    const description = window.prompt("간단한 설명 (비워도 됩니다)", submission.description ?? "");
+    if (description === null) return;
+    const response = await fetch(`/api/submissions/${submission.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, password, title, url, description }),
+    });
+    const result = (await response.json()) as { error?: string };
+    setToast(response.ok ? "프롬프트를 수정했습니다." : (result.error ?? "수정하지 못했습니다."));
+    if (response.ok) await refresh();
+  };
+
+  const deleteSubmission = async (submission: Submission) => {
+    const isLastValid = data.calendar.some(
+      (day) =>
+        day.date === kstDateKey(submission.submittedAt) &&
+        day.status === "completed" &&
+        day.submissions.length === 1,
+    );
+    const message = isLastValid
+      ? "이 링크를 삭제하면 오늘 숙제가 미완료 상태가 될 수 있습니다. 삭제하시겠습니까?"
+      : "이 링크를 삭제하시겠습니까?";
+    if (!window.confirm(message)) return;
+    const password = window.prompt("수정·삭제 비밀번호를 입력해주세요.");
+    if (!password) return;
+    const response = await fetch(`/api/submissions/${submission.id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ participantId, password }),
+    });
+    const result = (await response.json()) as { error?: string };
+    setToast(response.ok ? "프롬프트를 삭제했습니다." : (result.error ?? "삭제하지 못했습니다."));
+    if (response.ok) await refresh();
+  };
+
+  const visibleFeed = useMemo(
+    () => (savedOnly ? data.feed.filter((submission) => bookmarks.includes(submission.id)) : data.feed),
+    [bookmarks, data.feed, savedOnly],
+  );
+
+  if (!data.challenge) {
+    return (
+      <main className="grid min-h-screen place-items-center px-5">
+        <section className="surface-card max-w-md text-center">
+          <CalendarDays className="mx-auto text-blue-600" size={34} />
+          <h1 className="mt-4 text-2xl font-extrabold">현재 진행 중인 기수가 없습니다</h1>
+          <p className="mt-2 leading-7 text-slate-600">관리자가 새 기수를 활성화하면 참가를 시작할 수 있어요.</p>
+          <Link className="secondary-button mt-5" href="/admin">관리자 화면</Link>
+        </section>
+      </main>
+    );
+  }
+
+  const progress = challengeProgress(data);
+  const status = statusContent[data.todayStatus];
+  const selectedParticipant = data.selectedParticipant;
+  const firstDayOffset = data.calendar[0]
+    ? (new Date(`${data.calendar[0].date}T00:00:00Z`).getUTCDay() + 6) % 7
+    : 0;
+
+  if (!participantId || (!selectedParticipant && hydrated && !busy)) {
+    return (
+      <main className="min-h-screen px-5 py-6 sm:px-8 sm:py-10">
+        <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
+          <BrandHeader demo={data.demo} />
+          <ChallengeCard data={data} progress={progress} />
+          <section className="surface-card">
+            <div className="flex items-center gap-3">
+              <span className="grid size-11 place-items-center rounded-2xl bg-blue-100 text-blue-700"><UserRound size={23} /></span>
+              <div>
+                <p className="text-sm font-semibold text-slate-500">처음 오셨나요?</p>
+                <h2 className="text-xl font-extrabold">내 이름을 선택해주세요</h2>
+              </div>
+            </div>
+            <div className="mt-5 grid gap-3">
+              {data.participants.map((participant) => (
+                <button className="participant-button" key={participant.id} type="button" onClick={() => chooseParticipant(participant.id)}>
+                  <span className="avatar">{participant.name.slice(0, 1)}</span>
+                  <span className="flex-1 text-left font-bold">{participant.name}</span>
+                  <ArrowRight size={19} />
+                </button>
+              ))}
+            </div>
+          </section>
+          <p className="text-center text-sm leading-6 text-slate-500">선택한 이름은 이 기기에만 저장되며 언제든 바꿀 수 있어요.</p>
+          <Link className="mx-auto flex items-center gap-2 py-2 text-sm font-bold text-slate-500 hover:text-blue-700" href="/admin">
+            <ShieldCheck size={17} /> 관리자
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen px-4 pb-28 pt-5 sm:px-8 sm:pb-10">
+      <div className="mx-auto w-full max-w-5xl">
+        <BrandHeader demo={data.demo} onChangeParticipant={changeParticipant} participantName={selectedParticipant?.name} />
+        <div className="mt-5 grid gap-5 lg:grid-cols-[15rem_minmax(0,1fr)]">
+          <aside className="hidden lg:block">
+            <ChallengeCard data={data} progress={progress} compact />
+            <DesktopNav tab={tab} onChange={setTab} />
+          </aside>
+          <section className="min-w-0">
+            {tab === "home" && (
+              <div className="grid gap-5">
+                {data.notices[0] && (
+                  <article className="notice-card">
+                    <Megaphone size={20} />
+                    <div>
+                      <p className="font-extrabold">{data.notices[0].title}</p>
+                      <p className="mt-1 text-sm leading-6 text-slate-600">{data.notices[0].content}</p>
+                    </div>
+                  </article>
+                )}
+                <section className={`status-card ${status.tone}`}>
+                  <span className="text-4xl" aria-hidden="true">{status.icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold opacity-70">{displayDate(kstDateKey(data.now))}</p>
+                    <h1 className="mt-1 text-2xl font-black tracking-tight">{status.title}</h1>
+                    <p className="mt-2 font-medium opacity-80">{status.detail}</p>
+                  </div>
+                  {data.todayStatus === "pending" && (
+                    <button className="white-button" type="button" onClick={() => setTab("submit")}>링크 등록하기</button>
+                  )}
+                </section>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <StatCard label="완료" value={data.summary.completedDays} suffix="일" icon={<CheckCircle2 size={19} />} />
+                  <StatCard label="미제출" value={data.summary.missedDays} suffix="일" icon={<Clock3 size={19} />} />
+                  <StatCard label="등록 링크" value={data.summary.totalLinks} suffix="개" icon={<Link2 size={19} />} />
+                  <StatCard label="현재 스트릭" value={data.summary.streak} suffix="일" icon={<Flame size={19} />} />
+                </div>
+                <section className="surface-card">
+                  <div className="flex items-center justify-between gap-3">
+                    <button className="icon-button" type="button" aria-label="이전 달" onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft size={20} /></button>
+                    <div className="text-center">
+                      <p className="text-sm font-semibold text-slate-500">나의 월별 현황</p>
+                      <h2 className="text-xl font-extrabold">{month.replace("-", "년 ")}월</h2>
+                    </div>
+                    <button className="icon-button" type="button" aria-label="다음 달" onClick={() => setMonth(shiftMonth(month, 1))}><ChevronRight size={20} /></button>
+                  </div>
+                  <div className="calendar-grid mt-5 text-center text-xs font-bold text-slate-400">
+                    {["월", "화", "수", "목", "금", "토", "일"].map((day) => <span key={day}>{day}</span>)}
+                    {Array.from({ length: firstDayOffset }, (_, index) => <span key={`blank-${index}`} />)}
+                    {data.calendar.map((day) => (
+                      <button
+                        className={`calendar-day calendar-${day.status}`}
+                        key={day.date}
+                        type="button"
+                        onClick={() => setSelectedDay(day)}
+                        aria-label={`${day.date} ${day.status}`}
+                      >
+                        <span>{day.day}</span>
+                        <strong>{statusMark[day.status]}</strong>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm font-semibold text-slate-600">
+                    <span>✅ 완료</span><span>❌ 미제출</span><span>🟦 면제</span><span className="text-slate-400">회색 비대상일</span>
+                  </div>
+                </section>
+              </div>
+            )}
+
+            {tab === "submit" && (
+              <section className="surface-card mx-auto max-w-2xl">
+                <div className="mb-6 flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-bold text-blue-700">{displayDate(kstDateKey(data.now))} · {selectedParticipant?.name}</p>
+                    <h1 className="mt-1 text-2xl font-black">AI 활용 링크 등록</h1>
+                    <p className="mt-2 text-sm font-semibold text-slate-500">오늘 숙제 제출 마감 23:00</p>
+                  </div>
+                  <span className="grid size-12 place-items-center rounded-2xl bg-lime-100 text-lime-800"><Plus size={25} /></span>
+                </div>
+                <form className="grid gap-5" onSubmit={onSubmit}>
+                  <Field label="제목" hint="선택사항">
+                    <input className="form-input" name="title" maxLength={120} placeholder="예: 회의자료 AI로 요약하기" />
+                  </Field>
+                  <Field label="링크" required>
+                    <input className="form-input" name="url" type="url" required maxLength={2048} placeholder="https://..." />
+                  </Field>
+                  <Field label="간단한 설명" hint="선택사항">
+                    <textarea className="form-input min-h-28 resize-y" name="description" maxLength={1000} placeholder="어떻게 활용했는지 간단히 남겨보세요." />
+                  </Field>
+                  <Field label="수정·삭제 비밀번호" required>
+                    <input className="form-input" name="password" type="password" required minLength={4} maxLength={72} autoComplete="new-password" placeholder="4자 이상" />
+                  </Field>
+                  <div className="rounded-2xl bg-blue-50 px-4 py-3 text-sm font-semibold leading-6 text-blue-950">
+                    <p>※ 숙제 제출 인정 마감은 23:00입니다.</p>
+                    <p>※ 수정·삭제도 숙제 제출과 동일하게 등록 당일 23:00까지 가능합니다.</p>
+                  </div>
+                  <button className="primary-button" disabled={busy} type="submit">{busy ? "등록 중..." : "링크 등록하기"} <ArrowRight size={19} /></button>
+                </form>
+              </section>
+            )}
+
+            {tab === "feed" && (
+              <div className="grid gap-4">
+                <section className="surface-card">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-blue-700">함께 배우기</p>
+                      <h1 className="text-2xl font-black">{savedOnly ? "내가 저장한 프롬프트" : "공유 피드"}</h1>
+                    </div>
+                    <button className={`filter-button ${savedOnly ? "filter-active" : ""}`} type="button" onClick={() => setSavedOnly(!savedOnly)}>
+                      <Bookmark size={17} fill={savedOnly ? "currentColor" : "none"} /> 저장한 프롬프트
+                    </button>
+                  </div>
+                  {!savedOnly && (
+                    <div className="mt-5 flex items-center justify-between gap-2">
+                      <button className="icon-button" type="button" aria-label="이전 날" onClick={() => setFeedDate(addDate(feedDate, -1))}><ChevronLeft size={20} /></button>
+                      <input className="date-input" type="date" max={kstDateKey(data.now)} value={feedDate} onChange={(event) => setFeedDate(event.target.value)} />
+                      <button className="icon-button" type="button" aria-label="다음 날" disabled={feedDate >= kstDateKey(data.now)} onClick={() => setFeedDate(addDate(feedDate, 1))}><ChevronRight size={20} /></button>
+                    </div>
+                  )}
+                  <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+                    <label className="search-box">
+                      <Search size={18} />
+                      <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="이름, 제목, 설명 검색" aria-label="프롬프트 검색" />
+                    </label>
+                    <button className={`filter-button ${featuredOnly ? "filter-active" : ""}`} type="button" onClick={() => setFeaturedOnly(!featuredOnly)}>
+                      <Star size={17} fill={featuredOnly ? "currentColor" : "none"} /> 우수만 보기
+                    </button>
+                  </div>
+                </section>
+                {busy && <p className="text-center text-sm font-semibold text-slate-500">불러오는 중...</p>}
+                {!busy && visibleFeed.length === 0 && (
+                  <section className="surface-card py-12 text-center">
+                    <Sparkles className="mx-auto text-blue-500" size={30} />
+                    <p className="mt-3 font-extrabold">조건에 맞는 프롬프트가 없습니다</p>
+                    <p className="mt-1 text-sm text-slate-500">다른 날짜나 검색어를 확인해보세요.</p>
+                  </section>
+                )}
+                {visibleFeed.map((submission) => (
+                  <article className="feed-card" key={submission.id}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="avatar-mini">{submission.participantName.slice(0, 1)}</span>
+                          <span className="font-extrabold">{submission.participantName}</span>
+                          <span className="text-sm font-semibold text-slate-400">{displayDate(kstDateKey(submission.submittedAt))} {formatKstTime(submission.submittedAt)}</span>
+                          {submission.isFeatured && <span className="featured-badge">⭐ 우수</span>}
+                        </div>
+                        {submission.title && <h2 className="mt-4 text-xl font-black tracking-tight">{submission.title}</h2>}
+                        {submission.description && <p className="mt-2 leading-7 text-slate-600">{submission.description}</p>}
+                      </div>
+                      <button className="bookmark-button" type="button" aria-label="북마크" onClick={() => toggleBookmark(submission)}>
+                        <Bookmark size={20} fill={bookmarks.includes(submission.id) ? "currentColor" : "none"} />
+                      </button>
+                    </div>
+                    <a className="link-chip mt-4" href={submission.url} target="_blank" rel="noopener noreferrer">
+                      <Link2 size={17} /><span>{hostLabel(submission.url)}</span><ExternalLink size={15} />
+                    </a>
+                    {submission.participantId === participantId && canParticipantEdit(submission.submittedAt, data.now) && (
+                      <div className="mt-4 flex gap-2 border-t border-slate-100 pt-3">
+                        <button className="small-action" type="button" onClick={() => editSubmission(submission)}><Pencil size={15} /> 수정</button>
+                        <button className="small-action text-red-600" type="button" onClick={() => deleteSubmission(submission)}><Trash2 size={15} /> 삭제</button>
+                        <span className="ml-auto self-center text-xs font-semibold text-slate-400">오늘 등록한 글만 가능</span>
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
+
+            {tab === "ranking" && (
+              <div className="grid gap-5">
+                <section className="ranking-hero">
+                  <Trophy size={30} />
+                  <div><p className="text-sm font-bold text-amber-900/70">{month.replace("-", "년 ")}월</p><h1 className="text-2xl font-black">러닝크루 랭킹</h1></div>
+                </section>
+                <section className="surface-card p-0">
+                  <ol className="divide-y divide-slate-100">
+                    {data.ranking.map((entry) => (
+                      <li className={`ranking-row ${entry.participantId === participantId ? "bg-blue-50/70" : ""}`} key={entry.participantId}>
+                        <span className="rank-number">{entry.rank === 1 ? "🥇" : entry.rank === 2 ? "🥈" : entry.rank === 3 ? "🥉" : entry.rank}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-extrabold">{entry.name}{entry.participantId === participantId && <span className="ml-2 text-xs text-blue-600">나</span>}</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-500">{entry.completedDays}일 완료 · 링크 {entry.totalLinks}개</p>
+                        </div>
+                        <span className="streak-badge"><Flame size={16} /> {entry.streak}일</span>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+                <p className="text-center text-sm leading-6 text-slate-500">순위는 완료일 수를 기준으로 하며 개인의 미제출·면제·금액 정보는 공개하지 않습니다.</p>
+              </div>
+            )}
+          </section>
+        </div>
+      </div>
+
+      <nav className="mobile-nav" aria-label="주요 메뉴">
+        <NavButton active={tab === "home"} icon={<Home size={21} />} label="내 현황" onClick={() => setTab("home")} />
+        <NavButton active={tab === "submit"} icon={<Plus size={22} />} label="등록" onClick={() => setTab("submit")} />
+        <NavButton active={tab === "feed"} icon={<Link2 size={21} />} label="공유" onClick={() => setTab("feed")} />
+        <NavButton active={tab === "ranking"} icon={<Trophy size={21} />} label="랭킹" onClick={() => setTab("ranking")} />
+      </nav>
+
+      {selectedDay && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => setSelectedDay(null)}>
+          <section className="modal-panel" role="dialog" aria-modal="true" aria-label="날짜별 등록 링크" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="absolute right-4 top-4 rounded-full p-2 hover:bg-slate-100" type="button" aria-label="닫기" onClick={() => setSelectedDay(null)}><X size={20} /></button>
+            <p className="text-sm font-bold text-blue-700">{displayDate(selectedDay.date)}</p>
+            <h2 className="mt-1 text-xl font-black">등록한 링크</h2>
+            <p className="mt-2 text-sm font-semibold text-slate-500">상태: {statusContent[selectedDay.status].title}</p>
+            <div className="mt-5 grid gap-3">
+              {selectedDay.submissions.length === 0 && <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">이날 등록한 링크가 없습니다.</p>}
+              {selectedDay.submissions.map((submission) => (
+                <a className="participant-button" href={submission.url} target="_blank" rel="noopener noreferrer" key={submission.id}>
+                  <Link2 size={18} className="text-blue-600" />
+                  <span className="min-w-0 flex-1 truncate font-bold">{submission.title || hostLabel(submission.url)}</span>
+                  <ExternalLink size={16} />
+                </a>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {toast && (
+        <div className="toast" role="status" aria-live="polite">
+          <span>{toast}</span>
+          <button type="button" aria-label="알림 닫기" onClick={() => setToast("")}><X size={17} /></button>
+        </div>
+      )}
+    </main>
+  );
+}
+
+function BrandHeader({ demo, participantName, onChangeParticipant }: { demo: boolean; participantName?: string; onChangeParticipant?: () => void }) {
+  return (
+    <header className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3">
+        <span className="brand-mark">AI</span>
+        <div><p className="text-sm font-semibold text-blue-700">부산 동구</p><p className="text-xl font-extrabold tracking-tight">AI 러닝크루</p></div>
+      </div>
+      <div className="flex items-center gap-2">
+        {demo && <span className="hidden rounded-full bg-amber-100 px-3 py-1.5 text-xs font-extrabold text-amber-800 sm:inline">체험 데이터</span>}
+        {participantName && (
+          <button className="user-chip" type="button" onClick={onChangeParticipant}><UserRound size={17} />{participantName}<LogOut size={15} /></button>
+        )}
+      </div>
+    </header>
+  );
+}
+
+function ChallengeCard({ data, progress, compact = false }: { data: AppData; progress: number; compact?: boolean }) {
+  return (
+    <section className={`challenge-card ${compact ? "p-5" : ""}`}>
+      <p className="text-sm font-semibold text-blue-100">현재 챌린지</p>
+      <div className={`mt-2 flex ${compact ? "flex-col items-start gap-4" : "items-end justify-between gap-4"}`}>
+        <div><h2 className={compact ? "text-xl font-extrabold" : "text-2xl font-extrabold"}>{data.challenge?.name}</h2><p className="mt-1 text-sm text-blue-100">{data.challenge?.startDate.replaceAll("-", ".")} — {data.challenge?.endDate.replaceAll("-", ".")}</p></div>
+        <div className="progress-ring" aria-label={`챌린지 진행률 ${progress}퍼센트`}>{progress}%</div>
+      </div>
+    </section>
+  );
+}
+
+function DesktopNav({ tab, onChange }: { tab: Tab; onChange: (tab: Tab) => void }) {
+  return (
+    <nav className="mt-4 grid gap-1 rounded-3xl border border-slate-200 bg-white/90 p-2">
+      <NavButton active={tab === "home"} icon={<Home size={19} />} label="내 현황" onClick={() => onChange("home")} />
+      <NavButton active={tab === "submit"} icon={<Plus size={20} />} label="링크 등록" onClick={() => onChange("submit")} />
+      <NavButton active={tab === "feed"} icon={<Link2 size={19} />} label="공유 피드" onClick={() => onChange("feed")} />
+      <NavButton active={tab === "ranking"} icon={<Trophy size={19} />} label="월별 랭킹" onClick={() => onChange("ranking")} />
+      <Link className="nav-button mt-2 border-t border-slate-100 pt-3" href="/admin"><ShieldCheck size={19} /><span>관리자</span></Link>
+    </nav>
+  );
+}
+
+function NavButton({ active, icon, label, onClick }: { active: boolean; icon: React.ReactNode; label: string; onClick: () => void }) {
+  return <button className={`nav-button ${active ? "nav-active" : ""}`} type="button" onClick={onClick}>{icon}<span>{label}</span></button>;
+}
+
+function StatCard({ label, value, suffix, icon }: { label: string; value: number; suffix: string; icon: React.ReactNode }) {
+  return <article className="stat-card"><span className="text-blue-600">{icon}</span><p className="mt-3 text-sm font-bold text-slate-500">{label}</p><p className="mt-1 text-2xl font-black">{value}<span className="ml-1 text-sm font-bold text-slate-500">{suffix}</span></p></article>;
+}
+
+function Field({ label, hint, required, children }: { label: string; hint?: string; required?: boolean; children: React.ReactNode }) {
+  return <label className="grid gap-2"><span className="flex items-center gap-2 font-extrabold">{label}{required && <span className="text-red-500">*</span>}{hint && <span className="text-xs font-semibold text-slate-400">{hint}</span>}</span>{children}</label>;
+}
