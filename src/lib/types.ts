@@ -39,15 +39,6 @@ export type CalendarDay = {
   submissions: Submission[];
 };
 
-export type RankingEntry = {
-  rank: number;
-  participantId: string;
-  name: string;
-  completedDays: number;
-  totalLinks: number;
-  streak: number;
-};
-
 export type AppData = {
   demo: boolean;
   now: string;
@@ -62,10 +53,20 @@ export type AppData = {
     exemptDays: number;
     totalLinks: number;
     streak: number;
+    bestStreak: number;
+    completionRate: number | null;
+    previousMonthCompletionRate: number | null;
+  };
+  crewGrowth: {
+    completionRate: number | null;
+    completedDays: number;
+    decidedDays: number;
+    totalLinks: number;
+    participantCount: number;
+    goalRate: number;
   };
   calendar: CalendarDay[];
   feed: Submission[];
-  ranking: RankingEntry[];
   notices: Array<{
     id: string;
     title: string;

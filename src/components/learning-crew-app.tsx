@@ -21,7 +21,6 @@ import {
   Sparkles,
   Star,
   Trash2,
-  Trophy,
   UserRound,
   X,
 } from "lucide-react";
@@ -30,7 +29,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { canParticipantEdit, formatKstTime, kstDateKey } from "@/lib/time";
 import type { AppData, CalendarDay, DailyStatus, Submission } from "@/lib/types";
 
-type Tab = "home" | "submit" | "feed" | "ranking";
+type Tab = "home" | "submit" | "feed" | "growth";
 
 const statusContent: Record<DailyStatus, { icon: string; title: string; detail: string; tone: string }> = {
   completed: { icon: "✅", title: "오늘 숙제를 완료했습니다", detail: "멋져요! 오늘의 AI 활용 기록이 쌓였어요.", tone: "status-completed" },
@@ -275,6 +274,15 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   const progress = challengeProgress(data);
   const status = statusContent[data.todayStatus];
   const selectedParticipant = data.selectedParticipant;
+  const completionRate = data.summary.completionRate;
+  const previousCompletionRate = data.summary.previousMonthCompletionRate;
+  const rateChange = completionRate !== null && previousCompletionRate !== null
+    ? completionRate - previousCompletionRate
+    : null;
+  const crewCompletionRate = data.crewGrowth.completionRate;
+  const crewGoalProgress = crewCompletionRate === null
+    ? 0
+    : Math.min(100, Math.round((crewCompletionRate / data.crewGrowth.goalRate) * 100));
   const firstDayOffset = data.calendar[0]
     ? (new Date(`${data.calendar[0].date}T00:00:00Z`).getUTCDay() + 6) % 7
     : 0;
@@ -483,27 +491,61 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
               </div>
             )}
 
-            {tab === "ranking" && (
+            {tab === "growth" && (
               <div className="grid gap-5">
-                <section className="ranking-hero">
-                  <Trophy size={30} />
-                  <div><p className="text-sm font-bold text-amber-900/70">{month.replace("-", "년 ")}월</p><h1 className="text-2xl font-black">러닝크루 랭킹</h1></div>
+                <section className="growth-hero">
+                  <Sparkles size={30} />
+                  <div>
+                    <p className="text-sm font-bold text-blue-900/70">{month.replace("-", "년 ")}월</p>
+                    <h1 className="text-2xl font-black">크루 성장</h1>
+                    <p className="mt-1 text-sm font-semibold text-blue-950/70">서로의 순위보다 나의 꾸준함과 우리의 변화를 확인해요.</p>
+                  </div>
                 </section>
-                <section className="surface-card p-0">
-                  <ol className="divide-y divide-slate-100">
-                    {data.ranking.map((entry) => (
-                      <li className={`ranking-row ${entry.participantId === participantId ? "bg-blue-50/70" : ""}`} key={entry.participantId}>
-                        <span className="rank-number">{entry.rank === 1 ? "🥇" : entry.rank === 2 ? "🥈" : entry.rank === 3 ? "🥉" : entry.rank}</span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-extrabold">{entry.name}{entry.participantId === participantId && <span className="ml-2 text-xs text-blue-600">나</span>}</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-500">{entry.completedDays}일 완료 · 링크 {entry.totalLinks}개</p>
-                        </div>
-                        <span className="streak-badge"><Flame size={16} /> {entry.streak}일</span>
-                      </li>
-                    ))}
-                  </ol>
+                <section className="surface-card">
+                  <div>
+                    <p className="text-sm font-bold text-blue-700">비교 없는 개인 기록</p>
+                    <h2 className="mt-1 text-xl font-black">{selectedParticipant?.name}님의 성장</h2>
+                  </div>
+                  <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <GrowthMetric label="이번 달 제출률" value={completionRate === null ? "집계 전" : `${completionRate}%`} detail="확정 대상일 기준" icon={<CheckCircle2 size={19} />} />
+                    <GrowthMetric label="완료한 날" value={`${data.summary.completedDays}일`} detail="이번 달 기록" icon={<CalendarDays size={19} />} />
+                    <GrowthMetric label="현재 연속 달성" value={`${data.summary.streak}일`} detail="면제·휴일은 유지" icon={<Flame size={19} />} />
+                    <GrowthMetric label="나의 최고 기록" value={`${data.summary.bestStreak}일`} detail="챌린지 시작 이후" icon={<Sparkles size={19} />} />
+                  </div>
+                  <div className="growth-insight mt-4">
+                    {completionRate === null
+                      ? "확정된 숙제 대상일이 생기면 이번 달 제출률을 알려드릴게요."
+                      : rateChange === null
+                        ? "지난달 비교 기록이 아직 없어요. 이번 달의 꾸준함이 새로운 기준이 됩니다."
+                        : rateChange > 0
+                          ? `지난달보다 제출률이 ${rateChange}%p 높아졌어요. 좋은 흐름을 이어가세요.`
+                          : rateChange < 0
+                            ? `지난달보다 제출률이 ${Math.abs(rateChange)}%p 낮지만, 오늘의 한 번부터 다시 쌓을 수 있어요.`
+                            : "지난달과 같은 제출률을 유지하고 있어요. 꾸준함이 쌓이고 있습니다."}
+                  </div>
                 </section>
-                <p className="text-center text-sm leading-6 text-slate-500">순위는 완료일 수를 기준으로 하며 개인의 미제출·면제·금액 정보는 공개하지 않습니다.</p>
+                <section className="surface-card">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-emerald-700">함께 만든 변화</p>
+                      <h2 className="mt-1 text-xl font-black">크루 공동 목표</h2>
+                    </div>
+                    <p className="text-3xl font-black text-emerald-700">{crewCompletionRate === null ? "—" : `${crewCompletionRate}%`}</p>
+                  </div>
+                  <div className="growth-progress-track mt-5" role="progressbar" aria-label={`크루 제출률 ${crewCompletionRate ?? 0}%, 공동 목표 ${data.crewGrowth.goalRate}%`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={crewCompletionRate ?? 0}>
+                    <span className="growth-progress-bar" style={{ width: `${crewGoalProgress}%` }} />
+                  </div>
+                  <div className="mt-2 flex justify-between text-xs font-bold text-slate-500">
+                    <span>함께 달성 중</span>
+                    <span>공동 목표 {data.crewGrowth.goalRate}%</span>
+                  </div>
+                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                    <CrewMetric label="함께 완료" value={`${data.crewGrowth.completedDays}/${data.crewGrowth.decidedDays}회`} detail="확정된 숙제 대상 횟수" />
+                    <CrewMetric label="공유한 링크" value={`${data.crewGrowth.totalLinks}개`} detail="이번 달 크루 전체" />
+                    <CrewMetric label="함께한 구성원" value={`${data.crewGrowth.participantCount}명`} detail="이름과 순위 없이 합계만" />
+                  </div>
+                </section>
+                <p className="text-center text-sm leading-6 text-slate-500">다른 참가자의 완료일·미제출·연속 달성은 표시하지 않으며, 운영에 필요한 상세 현황은 관리자 화면에서만 확인합니다.</p>
               </div>
             )}
           </section>
@@ -514,7 +556,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
         <NavButton active={tab === "home"} icon={<Home size={21} />} label="내 현황" onClick={() => setTab("home")} />
         <NavButton active={tab === "submit"} icon={<Plus size={22} />} label="등록" onClick={() => setTab("submit")} />
         <NavButton active={tab === "feed"} icon={<Link2 size={21} />} label="공유" onClick={() => setTab("feed")} />
-        <NavButton active={tab === "ranking"} icon={<Trophy size={21} />} label="랭킹" onClick={() => setTab("ranking")} />
+        <NavButton active={tab === "growth"} icon={<Sparkles size={21} />} label="성장" onClick={() => setTab("growth")} />
       </nav>
 
       {selectedDay && (
@@ -583,7 +625,7 @@ function DesktopNav({ tab, onChange }: { tab: Tab; onChange: (tab: Tab) => void 
       <NavButton active={tab === "home"} icon={<Home size={19} />} label="내 현황" onClick={() => onChange("home")} />
       <NavButton active={tab === "submit"} icon={<Plus size={20} />} label="링크 등록" onClick={() => onChange("submit")} />
       <NavButton active={tab === "feed"} icon={<Link2 size={19} />} label="공유 피드" onClick={() => onChange("feed")} />
-      <NavButton active={tab === "ranking"} icon={<Trophy size={19} />} label="월별 랭킹" onClick={() => onChange("ranking")} />
+      <NavButton active={tab === "growth"} icon={<Sparkles size={19} />} label="크루 성장" onClick={() => onChange("growth")} />
       <Link className="nav-button mt-2 border-t border-slate-100 pt-3" href="/admin"><ShieldCheck size={19} /><span>관리자</span></Link>
     </nav>
   );
@@ -595,6 +637,14 @@ function NavButton({ active, icon, label, onClick }: { active: boolean; icon: Re
 
 function StatCard({ label, value, suffix, icon }: { label: string; value: number; suffix: string; icon: React.ReactNode }) {
   return <article className="stat-card"><span className="text-blue-600">{icon}</span><p className="mt-3 text-sm font-bold text-slate-500">{label}</p><p className="mt-1 text-2xl font-black">{value}<span className="ml-1 text-sm font-bold text-slate-500">{suffix}</span></p></article>;
+}
+
+function GrowthMetric({ label, value, detail, icon }: { label: string; value: string; detail: string; icon: React.ReactNode }) {
+  return <article className="rounded-2xl bg-slate-50 p-4"><span className="text-blue-600">{icon}</span><p className="mt-3 text-xs font-bold text-slate-500">{label}</p><p className="mt-1 text-xl font-black">{value}</p><p className="mt-1 text-xs font-semibold text-slate-400">{detail}</p></article>;
+}
+
+function CrewMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return <article className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4"><p className="text-xs font-bold text-emerald-700">{label}</p><p className="mt-1 text-xl font-black text-slate-900">{value}</p><p className="mt-1 text-xs font-semibold text-slate-500">{detail}</p></article>;
 }
 
 function Field({ label, hint, required, children }: { label: string; hint?: string; required?: boolean; children: React.ReactNode }) {

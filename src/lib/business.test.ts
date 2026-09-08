@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateBestStreak,
+  calculateCompletionRate,
   calculatePenalty,
   calculateStreak,
   evaluateDailyStatus,
@@ -86,6 +88,13 @@ describe("스트릭과 정산", () => {
   it("면제와 비대상일은 스트릭을 끊지 않는다", () => {
     expect(calculateStreak(["completed", "excluded", "exempt", "completed"])).toBe(2);
     expect(calculateStreak(["completed", "missed", "completed"])).toBe(1);
+  });
+
+  it("최고 연속 달성과 확정 대상일 기준 완료율을 계산한다", () => {
+    const statuses = ["completed", "excluded", "completed", "missed", "completed"] as const;
+    expect(calculateBestStreak([...statuses])).toBe(2);
+    expect(calculateCompletionRate([...statuses])).toBe(75);
+    expect(calculateCompletionRate(["pending", "exempt", "excluded"])).toBeNull();
   });
 
   it("날짜별 차감단가를 소급하지 않는다", () => {

@@ -1,6 +1,8 @@
 import "server-only";
 
 import {
+  calculateBestStreak,
+  calculateCompletionRate,
   calculateParticipantStatuses,
   calculateStreak,
   evaluateDailyStatus,
@@ -14,7 +16,6 @@ import type {
   AppData,
   Challenge,
   Participant,
-  RankingEntry,
   Submission,
 } from "@/lib/types";
 import { getSupabaseAdmin, isDemoMode } from "@/server/supabase";
@@ -75,6 +76,12 @@ function toParticipant(row: ParticipantRow): Participant {
     joinedAt: row.joined_at,
     leftAt: row.left_at,
   };
+}
+
+function previousMonthKey(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 2, 1));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 function buildData(
@@ -152,7 +159,7 @@ function buildData(
     : [];
 
   const monthSummary = summarizeStatuses(calendar.map((day) => day.status));
-  const rankingsUnranked = participantRows.map((row) => {
+  const participantGrowth = participantRows.map((row) => {
     const participant = toParticipant(row);
     const allStatuses = calculateParticipantStatuses({
       now,
@@ -164,31 +171,26 @@ function buildData(
       exemptionDates: exemptionMap.get(participant.id) ?? new Set(),
       submittedAt: submissionMap.get(participant.id) ?? [],
     });
-    const monthly = allStatuses.filter((item) => item.date.startsWith(month));
     return {
       participantId: participant.id,
-      name: participant.name,
-      completedDays: monthly.filter((item) => item.status === "completed").length,
-      totalLinks: submissions.filter(
-        (submission) =>
-          submission.participantId === participant.id &&
-          kstDateKey(submission.submittedAt).startsWith(month),
-      ).length,
-      streak: calculateStreak(allStatuses.map((item) => item.status)),
+      allStatuses,
+      monthlyStatuses: allStatuses.filter((item) => item.date.startsWith(month)),
     };
   });
-  rankingsUnranked.sort(
-    (a, b) => b.completedDays - a.completedDays || b.totalLinks - a.totalLinks || a.name.localeCompare(b.name, "ko"),
+  const selectedGrowth = participantGrowth.find(
+    (entry) => entry.participantId === selectedParticipant?.id,
   );
-  let lastCompleted = -1;
-  let lastRank = 0;
-  const ranking: RankingEntry[] = rankingsUnranked.map((entry, index) => {
-    if (entry.completedDays !== lastCompleted) {
-      lastRank = index + 1;
-      lastCompleted = entry.completedDays;
-    }
-    return { ...entry, rank: lastRank };
-  });
+  const crewStatuses = participantGrowth.flatMap((entry) =>
+    entry.monthlyStatuses.map((item) => item.status),
+  );
+  const crewCompletedDays = crewStatuses.filter((status) => status === "completed").length;
+  const crewDecidedDays = crewCompletedDays + crewStatuses.filter((status) => status === "missed").length;
+  const crewParticipantCount = participantGrowth.filter((entry) =>
+    entry.monthlyStatuses.some((item) => item.status !== "not_enrolled" && item.status !== "future"),
+  ).length;
+  const crewTotalLinks = submissions.filter((submission) =>
+    kstDateKey(submission.submittedAt).startsWith(month),
+  ).length;
 
   const normalizedSearch = query.search?.trim().toLocaleLowerCase("ko") ?? "";
   const feed = submissions
@@ -216,9 +218,10 @@ function buildData(
         submittedAt: submissionMap.get(selectedParticipant.id) ?? [],
       })
     : "not_enrolled";
-  const selectedRanking = ranking.find(
-    (entry) => entry.participantId === selectedParticipant?.id,
-  );
+  const previousMonth = previousMonthKey(month);
+  const previousMonthStatuses = selectedGrowth?.allStatuses
+    .filter((item) => item.date.startsWith(previousMonth))
+    .map((item) => item.status) ?? [];
 
   return {
     demo,
@@ -237,11 +240,21 @@ function buildData(
               kstDateKey(submission.submittedAt).startsWith(month),
           ).length
         : 0,
-      streak: selectedRanking?.streak ?? 0,
+      streak: calculateStreak(selectedGrowth?.allStatuses.map((item) => item.status) ?? []),
+      bestStreak: calculateBestStreak(selectedGrowth?.allStatuses.map((item) => item.status) ?? []),
+      completionRate: calculateCompletionRate(calendar.map((day) => day.status)),
+      previousMonthCompletionRate: calculateCompletionRate(previousMonthStatuses),
+    },
+    crewGrowth: {
+      completionRate: calculateCompletionRate(crewStatuses),
+      completedDays: crewCompletedDays,
+      decidedDays: crewDecidedDays,
+      totalLinks: crewTotalLinks,
+      participantCount: crewParticipantCount,
+      goalRate: 90,
     },
     calendar,
     feed,
-    ranking,
     notices: noticeRows.map((notice) => ({
       id: String(notice.id),
       title: notice.title,
@@ -360,10 +373,26 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
       selectedParticipant: null,
       todayStatus: "not_enrolled",
       month: query.month ?? kstDateKey(now).slice(0, 7),
-      summary: { completedDays: 0, missedDays: 0, exemptDays: 0, totalLinks: 0, streak: 0 },
+      summary: {
+        completedDays: 0,
+        missedDays: 0,
+        exemptDays: 0,
+        totalLinks: 0,
+        streak: 0,
+        bestStreak: 0,
+        completionRate: null,
+        previousMonthCompletionRate: null,
+      },
+      crewGrowth: {
+        completionRate: null,
+        completedDays: 0,
+        decidedDays: 0,
+        totalLinks: 0,
+        participantCount: 0,
+        goalRate: 90,
+      },
       calendar: [],
       feed: [],
-      ranking: [],
       notices: [],
     };
   }

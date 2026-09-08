@@ -61,6 +61,25 @@ export function calculateStreak(statuses: DailyStatus[]): number {
   return streak;
 }
 
+export function calculateBestStreak(statuses: DailyStatus[]): number {
+  let streak = 0;
+  let bestStreak = 0;
+  for (const status of statuses) {
+    if (status === "completed") {
+      streak += 1;
+      bestStreak = Math.max(bestStreak, streak);
+    }
+    if (status === "missed") streak = 0;
+  }
+  return bestStreak;
+}
+
+export function calculateCompletionRate(statuses: DailyStatus[]): number | null {
+  const completedDays = statuses.filter((status) => status === "completed").length;
+  const decidedDays = completedDays + statuses.filter((status) => status === "missed").length;
+  return decidedDays === 0 ? null : Math.round((completedDays / decidedDays) * 100);
+}
+
 export function calculateParticipantStatuses(
   input: Omit<StatusInput, "dateKey"> & { from?: string; to?: string },
 ): Array<{ date: string; status: DailyStatus }> {
