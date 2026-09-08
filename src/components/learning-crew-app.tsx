@@ -29,6 +29,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { canParticipantEdit, formatKstTime, kstDateKey } from "@/lib/time";
 import type { AppData, CalendarDay, DailyStatus, Submission } from "@/lib/types";
 import { MissionCard, ReminderCard, WeekRecord } from "./habit-cards";
+import { ParticipantDirectory } from "./participant-directory";
 
 type Tab = "home" | "submit" | "feed" | "growth";
 
@@ -313,24 +314,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
         <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
           <BrandHeader demo={data.demo} />
           <ChallengeCard data={data} progress={progress} />
-          <section className="surface-card">
-            <div className="flex items-center gap-3">
-              <span className="grid size-11 place-items-center rounded-2xl bg-blue-100 text-blue-700"><UserRound size={23} /></span>
-              <div>
-                <p className="text-sm font-semibold text-slate-500">처음 오셨나요?</p>
-                <h2 className="text-xl font-extrabold">내 이름을 선택해주세요</h2>
-              </div>
-            </div>
-            <div className="mt-5 grid gap-3">
-              {data.participants.map((participant) => (
-                <button className="participant-button" key={participant.id} type="button" onClick={() => chooseParticipant(participant.id)}>
-                  <span className="avatar">{participant.name.slice(0, 1)}</span>
-                  <span className="flex-1 text-left font-bold">{participant.name}</span>
-                  <ArrowRight size={19} />
-                </button>
-              ))}
-            </div>
-          </section>
+          <ParticipantDirectory groups={data.participantGroups} onChoose={chooseParticipant} />
           <p className="text-center text-sm leading-6 text-slate-500">선택한 이름은 이 기기에만 저장되며 언제든 바꿀 수 있어요.</p>
           <Link className="mx-auto flex items-center gap-2 py-2 text-sm font-bold text-slate-500 hover:text-blue-700" href="/admin">
             <ShieldCheck size={17} /> 관리자

@@ -17,6 +17,7 @@ export type Challenge = {
 export type Participant = {
   id: string;
   name: string;
+  affiliation: string;
   joinedAt: string;
   leftAt: string | null;
 };
@@ -40,6 +41,7 @@ export type CalendarDay = {
 };
 
 export type AppData = {
+  participantGroups: ParticipantGroup[];
   habit: { week: import("./habits").HabitDay[]; recentMisses: number };
   demo: boolean;
   now: string;
@@ -77,6 +79,13 @@ export type AppData = {
   }>;
 };
 
+export type ParticipantGroup = {
+  id: string;
+  name: string;
+  isActive: boolean;
+  members: Array<{ id: string; name: string; affiliation: string; selectable: boolean }>;
+};
+
 export type AdminSessionView = {
   authenticated: boolean;
   operatorId: string | null;
@@ -84,6 +93,7 @@ export type AdminSessionView = {
 };
 
 export type AdminParticipant = Participant & {
+  refundedAmount: number | null;
   paidAmount: number;
   isActive: boolean;
   completedDays: number;

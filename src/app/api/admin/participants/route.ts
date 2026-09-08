@@ -4,6 +4,7 @@ import { adminContext, apiError, demoMutation, writeAudit } from "@/server/admin
 const schema = z.object({
   challengeId: z.coerce.number().int().positive(),
   name: z.string().trim().min(1).max(60),
+  affiliation: z.string().trim().max(120).optional().default(""),
   joinedAt: z.iso.date(),
   leftAt: z.iso.date().nullable().optional(),
   paidAmount: z.number().int().nonnegative(),
@@ -18,10 +19,11 @@ export async function POST(request: Request) {
     const { data, error } = await ctx.db.from("participants").insert({
       challenge_id: body.challengeId,
       name: body.name,
+      affiliation: body.affiliation,
       joined_at: body.joinedAt,
       left_at: body.leftAt ?? null,
       paid_amount: body.paidAmount,
-    }).select("id,challenge_id,name,joined_at,left_at,paid_amount,is_active").single();
+    }).select("id,challenge_id,name,affiliation,joined_at,left_at,paid_amount,is_active").single();
     if (error) throw error;
     await writeAudit({ challengeId: body.challengeId, operatorId: ctx.operatorId, action: "create", entityType: "participant", entityId: data.id, after: data });
     return Response.json({ ok: true, id: String(data.id) });

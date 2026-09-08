@@ -27,8 +27,8 @@ export type Database = {
         { id?: number; name: string; is_active?: boolean; created_at?: string }
       >;
       participants: Table<
-        { id: number; challenge_id: number; name: string; joined_at: string; left_at: string | null; paid_amount: number; is_active: boolean; created_at: string; updated_at: string },
-        { id?: number; challenge_id: number; name: string; joined_at: string; left_at?: string | null; paid_amount?: number; is_active?: boolean; created_at?: string; updated_at?: string }
+        { id: number; challenge_id: number; name: string; affiliation: string; joined_at: string; left_at: string | null; paid_amount: number; refunded_amount: number | null; is_active: boolean; created_at: string; updated_at: string },
+        { id?: number; challenge_id: number; name: string; affiliation?: string; joined_at: string; left_at?: string | null; paid_amount?: number; refunded_amount?: number | null; is_active?: boolean; created_at?: string; updated_at?: string }
       >;
       submissions: Table<
         { id: number; challenge_id: number; participant_id: number; title: string | null; url: string; normalized_url: string; description: string | null; edit_password_hash: string; submitted_at: string; is_featured: boolean; created_at: string; updated_at: string },

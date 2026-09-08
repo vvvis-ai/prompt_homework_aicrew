@@ -39,8 +39,8 @@ export async function GET(request: Request) {
   try {
     const data = await getAdminData(parsed.data.month, parsed.data.challengeId, session);
     if (!data.challenge) return Response.json({ error: "선택한 기수를 찾을 수 없습니다." }, { status: 404 });
-    const headers = ["기수", "기준월", "참가자", "참여 시작일", "하차일", "완료일 수", "미제출일 수", "면제일 수", "전체 링크 수", "실제 입금액", "누적 차감액", "예상 반환액"];
-    const rows = data.participants.map((person) => [data.challenge!.name, data.month, person.name, person.joinedAt, person.leftAt ?? "", person.completedDays, person.missedDays, person.exemptDays, person.totalLinks, person.paidAmount, person.penaltyAmount, person.expectedRefund]);
+    const headers = ["기수", "기준월", "참가자", "참여 시작일", "하차일", "완료일 수", "미제출일 수", "면제일 수", "전체 링크 수", "실제 입금액", "누적 차감액", "예상 반환액", "환급 완료액", "환급 상태"];
+    const rows = data.participants.map((person) => [data.challenge!.name, data.month, person.name, person.joinedAt, person.leftAt ?? "", person.completedDays, person.missedDays, person.exemptDays, person.totalLinks, person.paidAmount, person.penaltyAmount, person.expectedRefund, person.refundedAmount ?? "", person.refundedAmount !== null ? "환급 완료" : "미기록"]);
     const baseName = safeFilename(`${data.challenge.name}_${data.month}_정산`);
 
     if (parsed.data.format === "csv") {
@@ -54,11 +54,11 @@ export async function GET(request: Request) {
     const summary = workbook.addWorksheet("월별 정산", { views: [{ state: "frozen", ySplit: 1 }] });
     summary.addRow(headers);
     rows.forEach((row) => summary.addRow(row));
-    summary.columns = [20, 12, 14, 14, 14, 12, 12, 12, 14, 15, 15, 15].map((width) => ({ width }));
+    summary.columns = [20, 12, 14, 14, 14, 12, 12, 12, 14, 15, 15, 15, 15, 14].map((width) => ({ width }));
     summary.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
     summary.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2457E6" } };
-    summary.autoFilter = { from: "A1", to: `L${Math.max(1, rows.length + 1)}` };
-    [10, 11, 12].forEach((column) => { summary.getColumn(column).numFmt = "#,##0\"원\""; });
+    summary.autoFilter = { from: "A1", to: `N${Math.max(1, rows.length + 1)}` };
+    [10, 11, 12, 13].forEach((column) => { summary.getColumn(column).numFmt = "#,##0\"원\""; });
 
     const detail = workbook.addWorksheet("날짜별 상세", { views: [{ state: "frozen", xSplit: 2, ySplit: 1 }] });
     detail.addRow(["기수", "참가자", "날짜", "상태"]);

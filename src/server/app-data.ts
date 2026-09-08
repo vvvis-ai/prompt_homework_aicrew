@@ -1,4 +1,5 @@
 import "server-only";
+import { groupParticipants } from "@/lib/participant-groups";
 import { recentMisses, weekDates } from "@/lib/habits";
 
 import {
@@ -30,6 +31,7 @@ type ChallengeRow = {
 type ParticipantRow = {
   id: number | string;
   name: string;
+  affiliation?: string;
   joined_at: string;
   left_at: string | null;
   is_active: boolean;
@@ -74,6 +76,7 @@ function toParticipant(row: ParticipantRow): Participant {
   return {
     id: String(row.id),
     name: row.name,
+    affiliation: row.affiliation ?? "",
     joinedAt: row.joined_at,
     leftAt: row.left_at,
   };
@@ -226,6 +229,10 @@ function buildData(
 
   return {
     demo,
+    participantGroups: groupParticipants(
+      [{ ...challengeRow, is_active: true }],
+      participantRows.map((row) => ({ ...row, affiliation: row.affiliation ?? "", challenge_id: challengeRow.id })),
+    ),
     habit: {
       week: weekDates(today).map((date) => ({ date, status: selectedGrowth?.allStatuses.find((day) => day.date === date)?.status ?? (date > today ? "future" : "not_enrolled") })),
       recentMisses: recentMisses(selectedGrowth?.allStatuses ?? []),
@@ -276,7 +283,7 @@ function demoRows(now: Date) {
   const startDate = currentMonth === "2026-09" ? "2026-09-01" : `${currentMonth}-01`;
   const challenge: ChallengeRow = {
     id: 1,
-    name: "AI 러닝크루 1기",
+    name: "2기",
     start_date: startDate,
     end_date: "2026-12-31",
   };
@@ -349,7 +356,7 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
   const now = new Date();
   if (isDemoMode()) {
     const rows = demoRows(now);
-    return buildData(
+    const data = buildData(
       query,
       now,
       rows.challenge,
@@ -360,6 +367,14 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
       rows.notices,
       true,
     );
+    data.participantGroups.push({
+      id: "2", name: "1기", isActive: false,
+      members: [
+        { id: "4", name: "이서연", affiliation: "", selectable: false },
+        { id: "5", name: "정민수", affiliation: "", selectable: false },
+      ],
+    });
+    return data;
   }
 
   const db = getSupabaseAdmin();
@@ -376,6 +391,7 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
       now: now.toISOString(),
       challenge: null,
       participants: [],
+      participantGroups: [],
       selectedParticipant: null,
       todayStatus: "not_enrolled",
       month: query.month ?? kstDateKey(now).slice(0, 7),
@@ -405,7 +421,7 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
   const challengeId = challenge.id;
   const [{ data: participants, error: participantsError }, { data: submissions, error: submissionsError }, { data: exemptions, error: exemptionsError }, { data: excluded, error: excludedError }, { data: notices, error: noticesError }] =
     await Promise.all([
-      db.from("participants").select("id,name,joined_at,left_at,is_active").eq("challenge_id", challengeId).order("name"),
+      db.from("participants").select("id,name,affiliation,joined_at,left_at,is_active").eq("challenge_id", challengeId).order("name"),
       db.from("submissions").select("id,participant_id,title,url,description,submitted_at,is_featured").eq("challenge_id", challengeId).gte("submitted_at", new Date(`${challenge.start_date}T00:00:00+09:00`).toISOString()).order("submitted_at", { ascending: false }),
       db.from("exemptions").select("participant_id,exemption_date").eq("challenge_id", challengeId),
       db.from("excluded_dates").select("excluded_date").eq("challenge_id", challengeId),
@@ -413,7 +429,13 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
     ]);
   const firstError = participantsError ?? submissionsError ?? exemptionsError ?? excludedError ?? noticesError;
   if (firstError) throw firstError;
-  return buildData(
+  const [{ data: rosterChallenges, error: rosterChallengeError }, { data: rosterMembers, error: rosterMemberError }] = await Promise.all([
+    db.from("challenges").select("id,name,is_active,start_date").lte("start_date", kstDateKey(now)),
+    db.from("participants").select("id,challenge_id,name,affiliation,is_active").order("name"),
+  ]);
+  if (rosterChallengeError) throw rosterChallengeError;
+  if (rosterMemberError) throw rosterMemberError;
+  const data = buildData(
     query,
     now,
     challenge as ChallengeRow,
@@ -424,4 +446,6 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
     (notices ?? []) as NoticeRow[],
     false,
   );
+  data.participantGroups = groupParticipants(rosterChallenges ?? [], rosterMembers ?? []);
+  return data;
 }

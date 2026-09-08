@@ -267,9 +267,9 @@ function Participants({ data, mutate }: { data: AdminData; mutate: (path: string
   const [saving, setSaving] = useState(false);
   if (!challenge) return <Empty text="먼저 기수를 만들어 주세요." />;
   async function add(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); const form = new FormData(event.currentTarget);
-    const ok = await mutate("/api/admin/participants", "POST", { challengeId: challenge!.id, name: form.get("name"), joinedAt: form.get("joinedAt"), paidAmount: Number(form.get("paidAmount")) }, "참가자를 추가했습니다.");
-    if (ok) event.currentTarget.reset();
+    event.preventDefault(); const element = event.currentTarget; const form = new FormData(element);
+    const ok = await mutate("/api/admin/participants", "POST", { challengeId: challenge!.id, name: form.get("name"), affiliation: form.get("affiliation"), joinedAt: form.get("joinedAt"), paidAmount: Number(form.get("paidAmount")) }, "참가자를 추가했습니다.");
+    if (ok) element.reset();
   }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -279,6 +279,7 @@ function Participants({ data, mutate }: { data: AdminData; mutate: (path: string
     const ok = await mutate(`/api/admin/participants/${editing.id}`, "PATCH", {
       challengeId: challenge!.id,
       name: form.get("name"),
+      affiliation: form.get("affiliation"),
       joinedAt: form.get("joinedAt"),
       leftAt: form.get("leftAt") || null,
       paidAmount: Number(form.get("paidAmount")),
@@ -299,13 +300,14 @@ function Participants({ data, mutate }: { data: AdminData; mutate: (path: string
     await mutate(`/api/admin/participants/${person.id}`, "PATCH", { challengeId: challenge!.id, name: person.name, joinedAt: person.joinedAt, leftAt: person.leftAt, paidAmount: person.paidAmount, isActive: !person.isActive }, "참가 상태를 변경했습니다.");
   }
   return <div className="grid gap-5">
-    <form onSubmit={add} className="surface-card grid gap-3 sm:grid-cols-4"><input className="form-input" name="name" placeholder="참가자 이름" required /><input className="form-input" name="joinedAt" type="date" defaultValue={challenge.startDate} required /><input className="form-input" name="paidAmount" type="number" min="0" defaultValue={challenge.defaultFee} required /><SubmitButton>참가자 추가</SubmitButton></form>
-    <section className="surface-card !p-0 overflow-hidden"><div className="overflow-x-auto"><table className="min-w-[900px] w-full text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr>{["이름", "참여 기간", "완료", "미완료", "링크", "납부", "벌금", "예상 환급", "관리"].map((item) => <th className="px-4 py-3" key={item}>{item}</th>)}</tr></thead><tbody>{data.participants.map((person) => <tr className={`border-t border-slate-100 ${person.isActive ? "" : "opacity-50"}`} key={person.id}><td className="px-4 py-3 font-black">{person.name}</td><td className="px-4 py-3">{person.joinedAt} ~ {person.leftAt ?? "참여 중"}</td><td className="px-4 py-3 text-emerald-700 font-bold">{person.completedDays}</td><td className="px-4 py-3 text-rose-700 font-bold">{person.missedDays}</td><td className="px-4 py-3">{person.totalLinks}</td><td className="px-4 py-3">{won(person.paidAmount)}</td><td className="px-4 py-3">{won(person.penaltyAmount)}</td><td className="px-4 py-3 font-black">{won(person.expectedRefund)}</td><td className="px-4 py-3"><div className="flex gap-1"><button type="button" className="icon-button !h-9 !w-9" aria-label={`${person.name} 수정`} onClick={() => setEditing(person)}><Pencil size={15} /></button><button type="button" className="filter-button !min-h-9" onClick={() => void toggle(person)}>{person.isActive ? "비활성" : "활성"}</button></div></td></tr>)}</tbody></table></div></section>
+    <form onSubmit={add} className="surface-card grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><input className="form-input" name="name" placeholder="참가자 이름" required /><label className="grid gap-1 text-sm font-bold">소속 (선택)<input className="form-input" name="affiliation" maxLength={120} /></label><input className="form-input" name="joinedAt" type="date" defaultValue={challenge.startDate} required /><input className="form-input" name="paidAmount" type="number" min="0" defaultValue={challenge.defaultFee} required /><SubmitButton>참가자 추가</SubmitButton></form>
+    <section className="surface-card !p-0 overflow-hidden"><div className="overflow-x-auto"><table className="min-w-[900px] w-full text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr>{["이름", "참여 기간", "완료", "미완료", "링크", "납부", "벌금", "환급액 / 상태", "관리"].map((item) => <th className="px-4 py-3" key={item}>{item}</th>)}</tr></thead><tbody>{data.participants.map((person) => <tr className={`border-t border-slate-100 ${person.isActive ? "" : "opacity-50"}`} key={person.id}><td className="px-4 py-3 font-black">{person.name}</td><td className="px-4 py-3">{person.joinedAt} ~ {person.leftAt ?? "참여 중"}</td><td className="px-4 py-3 text-emerald-700 font-bold">{person.completedDays}</td><td className="px-4 py-3 text-rose-700 font-bold">{person.missedDays}</td><td className="px-4 py-3">{person.totalLinks}</td><td className="px-4 py-3">{won(person.paidAmount)}</td><td className="px-4 py-3">{won(person.penaltyAmount)}</td><td className="px-4 py-3 font-black">{won(person.refundedAmount ?? person.expectedRefund)}<span className={`mt-1 block text-xs ${person.refundedAmount !== null ? "text-emerald-700" : "text-slate-500"}`}>{person.refundedAmount !== null ? "환급 완료" : "예상 환급"}</span></td><td className="px-4 py-3"><div className="flex gap-1"><button type="button" className="icon-button !h-9 !w-9" aria-label={`${person.name} 수정`} onClick={() => setEditing(person)}><Pencil size={15} /></button><button type="button" className="filter-button !min-h-9" onClick={() => void toggle(person)}>{person.isActive ? "비활성" : "활성"}</button></div></td></tr>)}</tbody></table></div></section>
     {editing && <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setEditing(null); }}>
       <section aria-labelledby="participant-edit-title" aria-modal="true" className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl" role="dialog">
         <div className="mb-5"><p className="text-xs font-black text-blue-600">참가자 관리</p><h2 className="mt-1 text-xl font-black" id="participant-edit-title">{editing.name} 정보 수정</h2></div>
         <form className="grid gap-4" onSubmit={save}>
           <label className="grid gap-1.5 text-sm font-bold">이름<input className="form-input" name="name" defaultValue={editing.name} maxLength={60} required /></label>
+          <label className="grid gap-1.5 text-sm font-bold">소속 (선택)<input className="form-input" name="affiliation" defaultValue={editing.affiliation} maxLength={120} /><span className="text-xs font-normal text-slate-500">입력하면 참가자 명단에 이름과 함께 표시됩니다.</span></label>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-1.5 text-sm font-bold">참여일 (YYYY-MM-DD)<input className="form-input" name="joinedAt" type="date" defaultValue={editing.joinedAt} required /></label>
             <label className="grid gap-1.5 text-sm font-bold">퇴장일 (YYYY-MM-DD)<input className="form-input" name="leftAt" type="date" defaultValue={editing.leftAt ?? ""} min={editing.joinedAt} /><span className="text-xs font-normal text-slate-500">참여 중이면 비워 두세요.</span></label>

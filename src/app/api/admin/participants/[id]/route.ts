@@ -4,6 +4,7 @@ import { adminContext, apiError, demoMutation, requireDeleteConfirmation, writeA
 const schema = z.object({
   challengeId: z.coerce.number().int().positive(),
   name: z.string().trim().min(1).max(60),
+  affiliation: z.string().trim().max(120).optional(),
   joinedAt: z.iso.date(),
   leftAt: z.iso.date().nullable().optional(),
   paidAmount: z.number().int().nonnegative(),
@@ -23,15 +24,16 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     if (!Number.isSafeInteger(id) || id < 1) throw new Error("잘못된 참가자입니다.");
     if (body.leftAt && body.leftAt < body.joinedAt) throw new Error("퇴장일은 참여일보다 빠를 수 없습니다.");
     if (ctx.demo) return demoMutation();
-    const { data: before, error: readError } = await ctx.db.from("participants").select("id,challenge_id,name,joined_at,left_at,paid_amount,is_active").eq("id", id).eq("challenge_id", body.challengeId).single();
+    const { data: before, error: readError } = await ctx.db.from("participants").select("id,challenge_id,name,affiliation,joined_at,left_at,paid_amount,is_active").eq("id", id).eq("challenge_id", body.challengeId).single();
     if (readError) throw readError;
     const { data: after, error } = await ctx.db.from("participants").update({
       name: body.name,
+      ...(body.affiliation !== undefined ? { affiliation: body.affiliation } : {}),
       joined_at: body.joinedAt,
       left_at: body.leftAt ?? null,
       paid_amount: body.paidAmount,
       is_active: body.isActive,
-    }).eq("id", id).eq("challenge_id", body.challengeId).select("id,challenge_id,name,joined_at,left_at,paid_amount,is_active").single();
+    }).eq("id", id).eq("challenge_id", body.challengeId).select("id,challenge_id,name,affiliation,joined_at,left_at,paid_amount,is_active").single();
     if (error) throw error;
     const changes = [
       before.left_at !== after.left_at ? "leave_update" : null,
@@ -69,7 +71,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
       .delete()
       .eq("id", id)
       .eq("challenge_id", body.challengeId)
-      .select("id,challenge_id,name,joined_at,left_at,paid_amount,is_active")
+      .select("id,challenge_id,name,affiliation,joined_at,left_at,paid_amount,is_active")
       .single();
     if (error) throw error;
     await writeAudit({ challengeId: body.challengeId, operatorId: ctx.operatorId, action: "delete", entityType: "participant", entityId: id, before });

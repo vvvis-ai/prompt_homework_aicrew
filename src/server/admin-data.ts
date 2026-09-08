@@ -58,6 +58,7 @@ export async function getAdminData(
       return {
         ...participant,
         paidAmount: 80000,
+        refundedAmount: null,
         isActive: true,
         ...app.summary,
         penaltyAmount,
@@ -148,7 +149,7 @@ export async function getAdminData(
   }
   const challengeIdNumber = chosen.id;
   const results = await Promise.all([
-    db.from("participants").select("id,name,joined_at,left_at,paid_amount,is_active").eq("challenge_id", challengeIdNumber).order("name"),
+    db.from("participants").select("id,name,affiliation,joined_at,left_at,paid_amount,refunded_amount,is_active").eq("challenge_id", challengeIdNumber).order("name"),
     db.from("submissions").select("id,participant_id,title,url,description,submitted_at,is_featured").eq("challenge_id", challengeIdNumber).order("submitted_at", { ascending: false }),
     db.from("exemptions").select("id,participant_id,exemption_date,reason").eq("challenge_id", challengeIdNumber).order("exemption_date", { ascending: false }),
     db.from("excluded_dates").select("id,excluded_date,reason,source").eq("challenge_id", challengeIdNumber).order("excluded_date"),
@@ -213,9 +214,11 @@ export async function getAdminData(
     return {
       id,
       name: row.name,
+      affiliation: row.affiliation,
       joinedAt: row.joined_at,
       leftAt: row.left_at,
       paidAmount: Number(row.paid_amount),
+      refundedAmount: row.refunded_amount === null ? null : Number(row.refunded_amount),
       isActive: row.is_active,
       ...summary,
       totalLinks: submissions.filter(
