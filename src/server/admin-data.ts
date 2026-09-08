@@ -1,4 +1,5 @@
 import "server-only";
+import { recentMisses, weekDates } from "@/lib/habits";
 
 import {
   calculateParticipantStatuses,
@@ -78,6 +79,7 @@ export async function getAdminData(
     );
     return {
       demo: true,
+      habit: participantApps.map((app, index) => ({ ...app.habit, participantId: base.participants[index].id, name: base.participants[index].name, active: app.todayStatus !== "not_enrolled" })),
       session,
       challenge: base.challenge
         ? { ...base.challenge, defaultFee: 80000, defaultPenalty: 2000, isActive: true }
@@ -128,6 +130,7 @@ export async function getAdminData(
       demo: false,
       session,
       challenge: null,
+      habit: [],
       challenges: [],
       operators,
       participants: [],
@@ -178,6 +181,7 @@ export async function getAdminData(
   const rates = rateRows.map((row) => ({ effectiveFrom: row.effective_from, amount: Number(row.amount) }));
   const days = dateKeysInMonth(selectedMonth);
   const monthlyPenaltyByParticipant = new Map<string, number>();
+  const habit: AdminData["habit"] = [];
   const participants = participantRows.map((row) => {
     const id = String(row.id);
     const participantSubmissions = submissions
@@ -199,6 +203,10 @@ export async function getAdminData(
       submittedAt: participantSubmissions,
     });
     const monthly = allStatuses.filter((item) => item.date.startsWith(selectedMonth));
+    habit.push({ participantId: id, name: row.name, active: row.is_active && row.joined_at <= today && (!row.left_at || today < row.left_at) && chosen.start_date <= today && today <= chosen.end_date,
+      recentMisses: recentMisses(allStatuses),
+      week: weekDates(today).map((date) => ({ date, status: allStatuses.find((day) => day.date === date)?.status ?? (date > today ? "future" : "not_enrolled") })),
+    });
     monthlyPenaltyByParticipant.set(id, calculatePenalty(monthly, rates));
     const summary = summarizeStatuses(monthly.map((item) => item.status));
     const penaltyAmount = calculatePenalty(allStatuses, rates);
@@ -281,6 +289,7 @@ export async function getAdminData(
   return {
     demo: false,
     session,
+    habit,
     challenge: {
       id: String(chosen.id),
       name: chosen.name,

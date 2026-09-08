@@ -10,6 +10,7 @@ const geistSans = Geist({
 
 export const metadata: Metadata = {
   title: "AI 러닝크루",
+  manifest: "/manifest.webmanifest",
   description: "매일의 AI 활용을 기록하고 함께 배우는 프롬프트 챌린지",
 };
 

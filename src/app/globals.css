@@ -17,6 +17,23 @@
 }
 
 * { box-sizing: border-box; }
+button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid #2563eb; outline-offset: 4px; }
+.habit-eyebrow { color: #2457e6; font-size: .72rem; font-weight: 800; letter-spacing: .08em; }
+.status-card h1, .mission-card h2, .habit-admin-hero h2 { word-break: keep-all; }
+.mission-card { border-radius: 1.75rem; padding: 1.5rem; background: linear-gradient(120deg, #173a91, #315ee4); color: white; box-shadow: 0 16px 35px #254bae22; }
+.mission-pill { display: inline-flex; align-items: center; gap: .4rem; border-radius: 999px; background: #ffffff20; padding: .4rem .7rem; font-size: .75rem; font-weight: 800; }
+.mission-prompt { background: #ffffff12; border: 1px solid #ffffff28; border-radius: 1rem; padding: 1rem; white-space: pre-wrap; font-size: .9rem; line-height: 1.85; overflow-wrap: anywhere; }
+.mission-submit { display: inline-flex; align-items: center; gap: .5rem; padding: .7rem .8rem; font-size: .85rem; font-weight: 700; }
+.mission-card .white-button { display: inline-flex; align-items: center; gap: .5rem; color: #173a91; background: white; }
+.week-strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .4rem; }
+.week-dot { display: grid; justify-items: center; gap: .6rem; font-size: .7rem; color: #64748b; }
+.week-dot strong { display: grid; place-items: center; width: 100%; max-width: 3rem; aspect-ratio: 1; border-radius: 1rem; background: #f1f5f9; }
+.week-completed strong { background: #dcfce7; color: #15803d; }
+.week-pending strong { background: #eff6ff; border: 2px solid #2563eb; color: #1d4ed8; }
+.week-missed strong { color: #92400e; background: #fffbeb; }
+.week-future strong, .week-excluded strong, .week-not_enrolled strong { color: #94a3b8; }
+.habit-admin-hero { border: 1px solid #dbeafe; border-radius: 1.75rem; padding: 1.5rem; background: linear-gradient(120deg, #eff6ff, #f0fdf4); }
+@media (max-width: 520px) { .status-card { flex-wrap: wrap; } .status-card > div { min-width: calc(100% - 4.5rem); } .status-card > button { margin-left: 3.75rem; } .mission-card { padding: 1.2rem; } .week-dot strong { border-radius: .75rem; } }
 html { background: var(--background); }
 
 body {

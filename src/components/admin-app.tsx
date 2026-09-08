@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { AdminData, AdminParticipant, DailyStatus, Submission } from "@/lib/types";
+import { HabitOverview, MissionManager } from "./habit-admin";
 
 type Gate = "loading" | "login" | "operator" | "ready";
 type Tab = "overview" | "participants" | "matrix" | "submissions" | "settings" | "audit";
@@ -227,11 +228,11 @@ export function AdminApp() {
           {data.demo && <div className="mb-4 rounded-xl bg-amber-100 px-4 py-3 text-sm font-bold text-amber-900">체험 모드입니다. 화면과 계산은 확인할 수 있지만 변경 내용은 저장되지 않습니다.</div>}
           <ErrorMessage message={message} />
           <div className="mt-4">
-            {tab === "overview" && <Overview data={data} />}
+            {tab === "overview" && <><HabitOverview data={data} /><details className="mt-5"><summary className="cursor-pointer p-3 text-sm font-bold text-slate-500">조회 월 상세 통계·정산 보기</summary><Overview data={data} /></details></>}
             {tab === "participants" && <Participants data={data} mutate={mutate} />}
             {tab === "matrix" && <Matrix data={data} />}
             {tab === "submissions" && <Submissions data={data} mutate={mutate} />}
-            {tab === "settings" && <SettingsPanel data={data} mutate={mutate} />}
+            {tab === "settings" && <div className="grid gap-5"><MissionManager key={data.challenge?.id} data={data} /><SettingsPanel data={data} mutate={mutate} /></div>}
             {tab === "audit" && <Audit data={data} />}
           </div>
         </section>

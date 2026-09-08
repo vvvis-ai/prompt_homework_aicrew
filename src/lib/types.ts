@@ -40,6 +40,7 @@ export type CalendarDay = {
 };
 
 export type AppData = {
+  habit: { week: import("./habits").HabitDay[]; recentMisses: number };
   demo: boolean;
   now: string;
   challenge: Challenge | null;
@@ -94,6 +95,7 @@ export type AdminParticipant = Participant & {
 };
 
 export type AdminData = {
+  habit: { week: import("./habits").HabitDay[]; participantId: string; name: string; recentMisses: number; active: boolean }[];
   demo: boolean;
   session: AdminSessionView;
   challenge: (Challenge & {

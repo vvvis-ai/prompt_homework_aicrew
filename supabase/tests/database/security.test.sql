@@ -1,5 +1,5 @@
 begin;
-select plan(22);
+select plan(34);
 
 select has_table('public', 'challenges', 'challenges table exists');
 select has_table('public', 'participants', 'participants table exists');
@@ -26,6 +26,19 @@ select ok(has_table_privilege('service_role', 'public.submissions', 'SELECT'), '
 select ok(has_table_privilege('service_role', 'public.submissions', 'INSERT'), 'service role can insert submissions');
 select ok(has_table_privilege('service_role', 'public.submissions', 'UPDATE'), 'service role can update submissions');
 select ok(has_function_privilege('service_role', 'public.activate_challenge(bigint)', 'EXECUTE'), 'service role can activate challenge');
+
+select has_table('public', 'daily_missions', 'daily missions table exists');
+select has_table('public', 'push_reminders', 'push reminders table exists');
+select ok((select relrowsecurity from pg_class where oid = 'public.daily_missions'::regclass), 'missions has RLS');
+select ok((select relrowsecurity from pg_class where oid = 'public.push_reminders'::regclass), 'reminders has RLS');
+select ok(not has_table_privilege('anon', 'public.daily_missions', 'SELECT'), 'anon cannot directly read missions');
+select ok(not has_table_privilege('anon', 'public.push_reminders', 'SELECT'), 'anon cannot read push endpoints');
+select ok(not has_table_privilege('authenticated', 'public.daily_missions', 'INSERT'), 'authenticated cannot create missions');
+select ok(not has_table_privilege('authenticated', 'public.push_reminders', 'SELECT'), 'authenticated cannot read push endpoints');
+select ok(not has_table_privilege('authenticated', 'public.push_reminders', 'UPDATE'), 'authenticated cannot reassign reminders');
+select ok(not has_table_privilege('anon', 'public.push_reminders', 'DELETE'), 'anon cannot delete reminders');
+select ok(has_table_privilege('service_role', 'public.daily_missions', 'SELECT,INSERT,UPDATE,DELETE'), 'server can manage missions');
+select ok(has_table_privilege('service_role', 'public.push_reminders', 'SELECT,INSERT,UPDATE,DELETE'), 'server can manage reminders');
 
 select * from finish();
 rollback;

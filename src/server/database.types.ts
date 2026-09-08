@@ -16,6 +16,8 @@ type Table<Row, Insert = Partial<Row>, Update = Partial<Insert>> = {
 export type Database = {
   public: {
     Tables: {
+      daily_missions: Table<{ id: number; challenge_id: number; mission_date: string; title: string; prompt: string; operator_id: number; created_at: string }>;
+      push_reminders: Table<{ id: string; participant_id: number; endpoint: string; token_hash: string; reminder_time: string; last_sent_date: string | null; created_at: string }>;
       challenges: Table<
         { id: number; name: string; start_date: string; end_date: string; default_fee: number; default_penalty: number; is_active: boolean; created_at: string; updated_at: string },
         { id?: number; name: string; start_date: string; end_date: string; default_fee?: number; default_penalty?: number; is_active?: boolean; created_at?: string; updated_at?: string }

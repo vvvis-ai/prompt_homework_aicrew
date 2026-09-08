@@ -1,4 +1,5 @@
 import "server-only";
+import { recentMisses, weekDates } from "@/lib/habits";
 
 import {
   calculateBestStreak,
@@ -225,6 +226,10 @@ function buildData(
 
   return {
     demo,
+    habit: {
+      week: weekDates(today).map((date) => ({ date, status: selectedGrowth?.allStatuses.find((day) => day.date === date)?.status ?? (date > today ? "future" : "not_enrolled") })),
+      recentMisses: recentMisses(selectedGrowth?.allStatuses ?? []),
+    },
     now: now.toISOString(),
     challenge,
     participants,
@@ -367,6 +372,7 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
   if (!challenge) {
     return {
       demo: false,
+      habit: { week: [], recentMisses: 0 },
       now: now.toISOString(),
       challenge: null,
       participants: [],

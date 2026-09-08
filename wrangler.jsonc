@@ -5,7 +5,8 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
-  "main": "vinext/server/fetch-handler",
+  "main": "src/worker.ts",
+  "triggers": { "crons": ["*/5 0-13,23 * * *"] },
   "assets": {
     "directory": "dist/client",
     "not_found_handling": "none",
@@ -23,7 +24,9 @@
       "SUPABASE_SECRET_KEY",
       "ADMIN_PASSWORD_PBKDF2",
       "ADMIN_PASSWORD_HASH",
-      "ADMIN_SESSION_SECRET"
+      "ADMIN_SESSION_SECRET",
+      "VAPID_PRIVATE_JWK",
+      "VAPID_PUBLIC_KEY"
     ]
   },
   "observability": {

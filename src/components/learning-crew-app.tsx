@@ -28,13 +28,14 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { canParticipantEdit, formatKstTime, kstDateKey } from "@/lib/time";
 import type { AppData, CalendarDay, DailyStatus, Submission } from "@/lib/types";
+import { MissionCard, ReminderCard, WeekRecord } from "./habit-cards";
 
 type Tab = "home" | "submit" | "feed" | "growth";
 
 const statusContent: Record<DailyStatus, { icon: string; title: string; detail: string; tone: string }> = {
-  completed: { icon: "✅", title: "오늘 숙제를 완료했습니다", detail: "멋져요! 오늘의 AI 활용 기록이 쌓였어요.", tone: "status-completed" },
-  pending: { icon: "⏳", title: "오늘 아직 제출하지 않았습니다", detail: "23:00까지 링크를 등록해주세요.", tone: "status-pending" },
-  missed: { icon: "❌", title: "오늘 숙제를 제출하지 못했습니다", detail: "링크 공유는 계속할 수 있어요.", tone: "status-missed" },
+  completed: { icon: "✅", title: "오늘도 AI를 써봤어요", detail: "오늘의 제출 완료! 작은 실천이 하나 더 쌓였어요.", tone: "status-completed" },
+  pending: { icon: "🌱", title: "오늘, AI와 3분 어때요?", detail: "한 번 써보고 23:00까지 링크를 남겨주세요.", tone: "status-pending" },
+  missed: { icon: "🌙", title: "오늘의 제출은 마감됐어요", detail: "오늘은 미제출로 기록됐어요. 다음 대상일에 다시 시작해요. 링크 공유는 계속할 수 있어요.", tone: "status-missed" },
   exempt: { icon: "🟦", title: "오늘은 면제일입니다", detail: "스트릭은 그대로 유지됩니다.", tone: "status-exempt" },
   excluded: { icon: "🎉", title: "오늘은 숙제 없는 날입니다", detail: "쉬어가도 좋고, AI 활용 사례를 공유해도 좋아요.", tone: "status-excluded" },
   future: { icon: "📅", title: "아직 오지 않은 날입니다", detail: "미래 날짜에는 상태를 표시하지 않습니다.", tone: "status-excluded" },
@@ -98,6 +99,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
   const [hydrated, setHydrated] = useState(false);
+  const [receipt, setReceipt] = useState<{ onTime: boolean; url: string } | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -146,7 +148,21 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
     };
   }, [featuredOnly, feedDate, hydrated, month, participantId, savedOnly, search]);
 
+  useEffect(() => {
+    if (!hydrated || !participantId) return;
+    const controller = new AbortController();
+    const update = () => {
+      if (document.visibilityState !== "visible") return;
+      const params = new URLSearchParams({ participantId, date: savedOnly ? "all" : feedDate, month, featuredOnly: String(featuredOnly), search });
+      fetch(`/api/app?${params}`, { cache: "no-store", signal: controller.signal }).then(async (response) => { if (response.ok) setData(await response.json()); }).catch(() => {});
+    };
+    const timer = window.setInterval(update, 60000);
+    window.addEventListener("focus", update);
+    return () => { controller.abort(); window.clearInterval(timer); window.removeEventListener("focus", update); };
+  }, [hydrated, participantId, feedDate, month, featuredOnly, savedOnly, search]);
+
   const chooseParticipant = (id: string) => {
+    setReceipt(null);
     window.localStorage.setItem("aicrew_participant_id", id);
     setParticipantId(id);
     setTab("home");
@@ -185,6 +201,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
     const formData = new FormData(form);
     setBusy(true);
     setToast("");
+    try {
     const response = await fetch("/api/submissions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -203,12 +220,15 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
       return;
     }
     form.reset();
+    setReceipt({ onTime: Boolean(result.onTime), url: String(formData.get("url")) });
     setToast(
       result.onTime
         ? "✅ 오늘 숙제를 완료했습니다."
         : "✅ 링크가 등록되었습니다. 마감시간 이후 등록되어 오늘 숙제 완료에는 반영되지 않습니다.",
     );
     await refresh();
+    } catch { setToast("연결이 원활하지 않습니다. 입력 내용을 유지했어요. 제출 현황을 확인한 뒤 다시 시도해주세요."); }
+    finally { setBusy(false); }
   };
 
   const editSubmission = async (submission: Submission) => {
@@ -352,6 +372,8 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     <button className="white-button" type="button" onClick={() => setTab("submit")}>링크 등록하기</button>
                   )}
                 </section>
+                <MissionCard data={data} onSubmit={() => setTab("submit")} />
+                <WeekRecord days={data.habit.week} />
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <StatCard label="완료" value={data.summary.completedDays} suffix="일" icon={<CheckCircle2 size={19} />} />
                   <StatCard label="미제출" value={data.summary.missedDays} suffix="일" icon={<Clock3 size={19} />} />
@@ -387,6 +409,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     <span>✅ 완료</span><span>❌ 미제출</span><span>🟦 면제</span><span className="text-slate-400">회색 비대상일</span>
                   </div>
                 </section>
+                <ReminderCard key={participantId} participantId={participantId} demo={data.demo} />
               </div>
             )}
 
@@ -395,17 +418,19 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                 <div className="mb-6 flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-bold text-blue-700">{displayDate(kstDateKey(data.now))} · {selectedParticipant?.name}</p>
-                    <h1 className="mt-1 text-2xl font-black">AI 활용 링크 등록</h1>
+                    <h1 className="mt-1 text-2xl font-black">오늘 써본 AI, 링크로 남겨요</h1>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">짧은 질문도, 기대와 달랐던 답도 괜찮아요. 직접 써봤다면 충분해요.</p>
                     <p className="mt-2 text-sm font-semibold text-slate-500">오늘 숙제 제출 마감 23:00</p>
                   </div>
                   <span className="grid size-12 place-items-center rounded-2xl bg-lime-100 text-lime-800"><Plus size={25} /></span>
                 </div>
+                {receipt && <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status"><strong>{receipt.onTime ? "오늘 숙제 인정 완료" : "링크 공유 완료 · 오늘 숙제 인정에는 미반영"}</strong><a className="mt-2 block break-all text-sm text-blue-700 underline" href={receipt.url} target="_blank" rel="noopener noreferrer">등록한 링크 확인</a><p className="mt-2 text-xs text-slate-600">공유 탭에서 등록 내용을 확인할 수 있어요. 수정·삭제는 등록 당일 23:00까지 가능합니다.</p></div>}
                 <form className="grid gap-5" onSubmit={onSubmit}>
+                  <Field label="AI 활용 링크" required>
+                    <input className="form-input" name="url" type="url" required maxLength={2048} placeholder="AI에서 공유 링크를 복사해 붙여넣으세요" />
+                  </Field>
                   <Field label="제목" hint="선택사항">
                     <input className="form-input" name="title" maxLength={120} placeholder="예: 회의자료 AI로 요약하기" />
-                  </Field>
-                  <Field label="링크" required>
-                    <input className="form-input" name="url" type="url" required maxLength={2048} placeholder="https://..." />
                   </Field>
                   <Field label="간단한 설명" hint="선택사항">
                     <textarea className="form-input min-h-28 resize-y" name="description" maxLength={1000} placeholder="어떻게 활용했는지 간단히 남겨보세요." />
@@ -447,7 +472,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                       <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="이름, 제목, 설명 검색" aria-label="프롬프트 검색" />
                     </label>
                     <button className={`filter-button ${featuredOnly ? "filter-active" : ""}`} type="button" onClick={() => setFeaturedOnly(!featuredOnly)}>
-                      <Star size={17} fill={featuredOnly ? "currentColor" : "none"} /> 우수만 보기
+                      <Star size={17} fill={featuredOnly ? "currentColor" : "none"} /> 따라 해볼 사례
                     </button>
                   </div>
                 </section>
@@ -467,7 +492,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                           <span className="avatar-mini">{submission.participantName.slice(0, 1)}</span>
                           <span className="font-extrabold">{submission.participantName}</span>
                           <span className="text-sm font-semibold text-slate-400">{displayDate(kstDateKey(submission.submittedAt))} {formatKstTime(submission.submittedAt)}</span>
-                          {submission.isFeatured && <span className="featured-badge">⭐ 우수</span>}
+                          {submission.isFeatured && <span className="featured-badge">✨ 따라 해봐요</span>}
                         </div>
                         {submission.title && <h2 className="mt-4 text-xl font-black tracking-tight">{submission.title}</h2>}
                         {submission.description && <p className="mt-2 leading-7 text-slate-600">{submission.description}</p>}
