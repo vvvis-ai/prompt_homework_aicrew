@@ -9,10 +9,21 @@ import {
   summarizeStatuses,
 } from "@/lib/business";
 import { dateKeysInMonth, kstDateKey } from "@/lib/time";
-import type { AdminData, AdminSessionView, DailyStatus, Submission } from "@/lib/types";
+import type { AdminData, AdminSessionView, DailyStatus, PushDeliveryStatus, Submission } from "@/lib/types";
 import { getAdminSession } from "@/server/admin-session";
 import { getAppData } from "@/server/app-data";
 import { getSupabaseAdmin, isDemoMode } from "@/server/supabase";
+
+type ReminderAdminRow = {
+  participant_id: number;
+  reminder_time: string;
+  last_attempt_at: string | null;
+  last_delivery_status: PushDeliveryStatus | null;
+  last_response_status: number | null;
+  last_error: string | null;
+  last_sent_date: string | null;
+  created_at: string;
+};
 
 export async function getOperatorChoices() {
   if (isDemoMode()) {
@@ -74,6 +85,7 @@ export async function getAdminData(
           submission.participantId === base.participants[index].id &&
           kstDateKey(submission.submittedAt) === today,
       ).length,
+      reminder: null,
     }));
     const allLinks = base.feed.filter((submission) =>
       kstDateKey(submission.submittedAt).startsWith(selectedMonth),
@@ -166,6 +178,22 @@ export async function getAdminData(
   const rateRows = results[4].data ?? [];
   const noticeRows = results[5].data ?? [];
   const auditRows = results[6].data ?? [];
+  const reminderResult = participantRows.length
+    ? await db
+        .from("push_reminders")
+        .select("participant_id,reminder_time,last_attempt_at,last_delivery_status,last_response_status,last_error,last_sent_date,created_at")
+        .in("participant_id", participantRows.map((row) => row.id))
+        .is("disabled_at", null)
+        .order("created_at", { ascending: false })
+    : { data: [], error: null };
+  if (reminderResult.error) throw reminderResult.error;
+  const reminderRows = (reminderResult.data ?? []) as ReminderAdminRow[];
+  const remindersByParticipant = new Map<number, ReminderAdminRow[]>();
+  for (const reminder of reminderRows) {
+    const group = remindersByParticipant.get(reminder.participant_id) ?? [];
+    group.push(reminder);
+    remindersByParticipant.set(reminder.participant_id, group);
+  }
   const participantName = new Map(participantRows.map((row) => [row.id, row.name]));
   const operatorName = new Map(operators.map((operator) => [operator.id, operator.name]));
   const submissions: Submission[] = submissionRows.map((row) => ({
@@ -262,6 +290,8 @@ export async function getAdminData(
   });
   const todayRows = participantRows.map((row) => {
     const participantId = String(row.id);
+    const reminders = remindersByParticipant.get(row.id) ?? [];
+    const latestReminder = reminders[0];
     return {
       participantId,
       name: row.name,
@@ -287,6 +317,17 @@ export async function getAdminData(
           submission.participantId === participantId &&
           kstDateKey(submission.submittedAt) === today,
       ).length,
+      reminder: latestReminder
+        ? {
+            deviceCount: reminders.length,
+            time: latestReminder.reminder_time,
+            lastAttemptAt: latestReminder.last_attempt_at,
+            lastDeliveryStatus: latestReminder.last_delivery_status,
+            lastResponseStatus: latestReminder.last_response_status,
+            lastError: latestReminder.last_error,
+            lastSentDate: latestReminder.last_sent_date,
+          }
+        : null,
     };
   });
   return {

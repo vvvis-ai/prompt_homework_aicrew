@@ -104,6 +104,24 @@ export type AdminParticipant = Participant & {
   expectedRefund: number;
 };
 
+export type PushDeliveryStatus =
+  | "sending"
+  | "sent"
+  | "failed"
+  | "expired"
+  | "test_sent"
+  | "legacy_claimed";
+
+export type AdminReminder = {
+  deviceCount: number;
+  time: string;
+  lastAttemptAt: string | null;
+  lastDeliveryStatus: PushDeliveryStatus | null;
+  lastResponseStatus: number | null;
+  lastError: string | null;
+  lastSentDate: string | null;
+};
+
 export type AdminData = {
   habit: { week: import("./habits").HabitDay[]; participantId: string; name: string; recentMisses: number; active: boolean }[];
   demo: boolean;
@@ -125,6 +143,7 @@ export type AdminData = {
     name: string;
     status: DailyStatus;
     linkCount: number;
+    reminder: AdminReminder | null;
   }>;
   metrics: {
     totalParticipants: number;

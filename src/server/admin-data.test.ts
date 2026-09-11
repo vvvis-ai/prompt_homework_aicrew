@@ -8,7 +8,7 @@ vi.mock("@/server/supabase", () => ({
   getSupabaseAdmin: () => ({
     from: (table: string) => {
       const query = {
-        select: () => query, eq: () => query, order: () => query, limit: () => query,
+        select: () => query, eq: () => query, in: () => query, is: () => query, order: () => query, limit: () => query,
         then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: mocks.tables[table] ?? [], error: null }).then(resolve),
       };
       return query;

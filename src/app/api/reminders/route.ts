@@ -22,7 +22,20 @@ export async function POST(request: Request) {
     const { data: challenge } = await db.from("challenges").select("id").eq("id", participant.challenge_id).eq("is_active", true).maybeSingle();
     if (!challenge) throw new Error("운영 중인 기수의 참가자를 선택해주세요.");
     const tokenHash = createHash("sha256").update(body.token).digest("hex");
-    const row = { id: body.id, participant_id: body.participantId, endpoint: body.endpoint, token_hash: tokenHash, reminder_time: body.time };
+    const row = {
+      id: body.id,
+      participant_id: body.participantId,
+      endpoint: body.endpoint,
+      token_hash: tokenHash,
+      reminder_time: body.time,
+      last_sent_date: null,
+      last_attempt_at: null,
+      last_delivery_status: null,
+      last_response_status: null,
+      last_error: null,
+      consecutive_failures: 0,
+      disabled_at: null,
+    };
     const { data: existing, error: ee } = await db.from("push_reminders").select("id").eq("id", body.id).maybeSingle();
     if (ee) throw ee;
     const result = existing
