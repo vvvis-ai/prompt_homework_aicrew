@@ -29,7 +29,7 @@ async function sendWebPush(endpoint: string): Promise<PushResponse> {
     .sign(key);
   const response = await fetch(endpoint, {
     method: "POST",
-    redirect: "error",
+    redirect: "manual",
     signal: AbortSignal.timeout(8000),
     headers: {
       Authorization: `vapid t=${jwt}, k=${process.env.VAPID_PUBLIC_KEY}`,

@@ -97,6 +97,7 @@ describe("scheduled reminders", () => {
     });
     expect(verified.payload.sub).toBe("https://prompt-homework-aicrew.antae98.workers.dev");
     expect(headers.TTL).toBe("3600");
+    expect(options?.redirect).toBe("manual");
     expect(updates).toContainEqual(expect.objectContaining({
       last_delivery_status: "sent",
       last_sent_date: "2026-09-08",
