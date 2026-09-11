@@ -4,7 +4,7 @@ import { getSupabaseAdmin, isDemoMode } from "@/server/supabase";
 import { createHash } from "node:crypto";
 
 const identity = z.object({ id: z.uuid(), token: z.uuid() });
-const schema = identity.extend({ participantId: z.coerce.number().int().positive(), time: z.string().regex(/^(0[8-9]|1[0-9]|2[0-2]):(00|15|30|45)$/), endpoint: z.string().max(2048).refine(isPushEndpoint) });
+const schema = identity.extend({ participantId: z.coerce.number().int().positive(), time: z.string().regex(/^(0[8-9]|1[0-9]|2[0-2]):[0-5][0-9]$/), endpoint: z.string().max(2048).refine(isPushEndpoint) });
 function sameOrigin(request: Request) {
   if (request.headers.get("origin") !== new URL(request.url).origin) throw new Error("잘못된 요청입니다.");
 }
