@@ -4,11 +4,15 @@ import {
   calculateCompletionRate,
   calculatePenalty,
   calculateStreak,
+  daysUntil,
   evaluateDailyStatus,
+  paymentStatusFor,
+  penaltyPhaseFor,
   penaltyRateForDate,
 } from "@/lib/business";
 import {
   canParticipantEdit,
+  formatRemainingUntilCutoff,
   isMissConfirmed,
   isSubmissionOnTime,
   kstDateKey,
@@ -109,6 +113,71 @@ describe("스트릭과 정산", () => {
       { date: "2026-10-15", status: "missed" },
       { date: "2026-10-16", status: "completed" },
     ], rates)).toBe(5000);
+  });
+});
+
+describe("차감 시작일", () => {
+  const guard = { ...base, penaltyStart: "2026-09-14", now: "2026-09-20T15:00:00Z", submittedAt: [] };
+
+  it("차감 시작일 이전 평일은 제외일 등록과 무관하게 excluded다", () => {
+    expect(evaluateDailyStatus({ ...guard, dateKey: "2026-09-11" })).toBe("excluded");
+    expect(evaluateDailyStatus({ ...guard, dateKey: "2026-09-08" })).toBe("excluded");
+  });
+
+  it("차감 시작일 당일부터 마감 후 미제출은 missed다", () => {
+    expect(evaluateDailyStatus({ ...guard, dateKey: "2026-09-14" })).toBe("missed");
+    expect(evaluateDailyStatus({ ...guard, dateKey: "2026-09-15" })).toBe("missed");
+  });
+
+  it("차감 시작일 이전 제출은 완료로 집계하지 않는다", () => {
+    expect(evaluateDailyStatus({ ...guard, dateKey: "2026-09-11", submittedAt: ["2026-09-11T05:00:00Z"] })).toBe("excluded");
+  });
+
+  it("차감 시작일 이전 구간은 차감 금액이 0원이다", () => {
+    const rates = [{ effectiveFrom: "2026-09-01", amount: 2000 }];
+    const statuses = ["2026-09-09", "2026-09-10", "2026-09-11", "2026-09-14", "2026-09-15"].map((date) => ({
+      date,
+      status: evaluateDailyStatus({ ...guard, dateKey: date }),
+    }));
+    expect(calculatePenalty(statuses, rates)).toBe(4000);
+  });
+
+  it("차감 시작 단계와 남은 일수를 계산한다", () => {
+    expect(penaltyPhaseFor("2026-09-12", "2026-09-14")).toBe("before");
+    expect(penaltyPhaseFor("2026-09-14", "2026-09-14")).toBe("first_day");
+    expect(penaltyPhaseFor("2026-09-15", "2026-09-14")).toBe("running");
+    expect(daysUntil("2026-09-12", "2026-09-14")).toBe(2);
+    expect(daysUntil("2026-09-14", "2026-09-14")).toBe(0);
+  });
+});
+
+describe("마감 카운트다운", () => {
+  it("마감 전에는 남은 시간을, 마감 시각부터는 null을 반환한다", () => {
+    expect(formatRemainingUntilCutoff("2026-09-14T12:30:00Z")).toBe("1시간 31분");
+    expect(formatRemainingUntilCutoff("2026-09-14T13:59:00Z")).toBe("2분");
+    expect(formatRemainingUntilCutoff("2026-09-14T14:00:00Z")).toBe("1분");
+    expect(formatRemainingUntilCutoff("2026-09-14T14:00:30Z")).toBe("1분 미만");
+    expect(formatRemainingUntilCutoff("2026-09-14T14:01:00Z")).toBeNull();
+  });
+});
+
+describe("납부 상태 판정", () => {
+  it("참가비 이상 납부에 확인일이 있으면 납부 완료다", () => {
+    expect(paymentStatusFor({ paidAmount: 80000, paidAt: "2026-09-12", fee: 80000 })).toBe("paid");
+    expect(paymentStatusFor({ paidAmount: 90000, paidAt: "2026-09-12", fee: 80000 })).toBe("paid");
+  });
+
+  it("확인일이 있고 참가비보다 적으면 부분 납부다", () => {
+    expect(paymentStatusFor({ paidAmount: 40000, paidAt: "2026-09-12", fee: 80000 })).toBe("partial");
+  });
+
+  it("금액이 0이면 확인일과 무관하게 미납이다", () => {
+    expect(paymentStatusFor({ paidAmount: 0, paidAt: null, fee: 80000 })).toBe("unpaid");
+    expect(paymentStatusFor({ paidAmount: 0, paidAt: "2026-09-12", fee: 80000 })).toBe("unpaid");
+  });
+
+  it("금액만 있고 확인일이 없으면 확인 필요다", () => {
+    expect(paymentStatusFor({ paidAmount: 80000, paidAt: null, fee: 80000 })).toBe("unconfirmed");
   });
 });
 

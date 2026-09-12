@@ -64,6 +64,20 @@ export function canParticipantEdit(
   return kstDateKey(submittedAt) === kstDateKey(now) && isSubmissionOnTime(now);
 }
 
+export function secondsUntilCutoff(now: Date | string | number = new Date()): number {
+  return Math.max(0, SUBMISSION_CUTOFF_SECONDS - kstSeconds(now));
+}
+
+export function formatRemainingUntilCutoff(now: Date | string | number = new Date()): string | null {
+  const remaining = secondsUntilCutoff(now);
+  if (remaining <= 0) return null;
+  const hours = Math.floor(remaining / 3600);
+  const minutes = Math.floor((remaining % 3600) / 60);
+  if (hours > 0) return `${hours}시간 ${minutes}분`;
+  if (minutes > 0) return `${minutes}분`;
+  return "1분 미만";
+}
+
 export function kstDateRange(dateKey: string): { start: string; end: string } {
   const [year, month, day] = dateKey.split("-").map(Number);
   const startMs = Date.UTC(year, month - 1, day) - 9 * 60 * 60 * 1000;

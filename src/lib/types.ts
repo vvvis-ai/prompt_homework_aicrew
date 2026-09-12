@@ -7,11 +7,14 @@ export type DailyStatus =
   | "future"
   | "not_enrolled";
 
+export type PaymentStatus = "paid" | "partial" | "unpaid" | "unconfirmed";
+
 export type Challenge = {
   id: string;
   name: string;
   startDate: string;
   endDate: string;
+  penaltyStartDate: string;
 };
 
 export type Participant = {
@@ -46,6 +49,12 @@ export type AppData = {
   demo: boolean;
   now: string;
   challenge: Challenge | null;
+  penaltyNotice: {
+    phase: "before" | "first_day" | "running";
+    startDate: string;
+    daysUntilStart: number;
+    dailyAmount: number;
+  } | null;
   participants: Participant[];
   selectedParticipant: Participant | null;
   todayStatus: DailyStatus;
@@ -95,6 +104,8 @@ export type AdminSessionView = {
 export type AdminParticipant = Participant & {
   refundedAmount: number | null;
   paidAmount: number;
+  paidAt: string | null;
+  paymentStatus: PaymentStatus;
   isActive: boolean;
   completedDays: number;
   missedDays: number;
@@ -124,6 +135,7 @@ export type AdminReminder = {
 
 export type AdminData = {
   habit: { week: import("./habits").HabitDay[]; participantId: string; name: string; recentMisses: number; active: boolean }[];
+  weeklyPenalty: { missedCount: number; amount: number; participantCount: number };
   demo: boolean;
   session: AdminSessionView;
   challenge: (Challenge & {
@@ -147,6 +159,8 @@ export type AdminData = {
   }>;
   metrics: {
     totalParticipants: number;
+    paidCount: number;
+    unpaidCount: number;
     todayCompleted: number;
     todayPending: number;
     todayMissed: number;

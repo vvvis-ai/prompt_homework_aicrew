@@ -7,7 +7,10 @@ import {
   calculateCompletionRate,
   calculateParticipantStatuses,
   calculateStreak,
+  daysUntil,
   evaluateDailyStatus,
+  penaltyPhaseFor,
+  penaltyRateForDate,
   summarizeStatuses,
 } from "@/lib/business";
 import {
@@ -27,6 +30,7 @@ type ChallengeRow = {
   name: string;
   start_date: string;
   end_date: string;
+  penalty_start_date?: string;
 };
 type ParticipantRow = {
   id: number | string;
@@ -69,6 +73,7 @@ function toChallenge(row: ChallengeRow): Challenge {
     name: row.name,
     startDate: row.start_date,
     endDate: row.end_date,
+    penaltyStartDate: row.penalty_start_date ?? row.start_date,
   };
 }
 
@@ -98,6 +103,7 @@ function buildData(
   excludedRows: ExcludedRow[],
   noticeRows: NoticeRow[],
   demo: boolean,
+  penaltyRates: Array<{ effective_from: string; amount: number }> = [],
 ): AppData {
   const today = kstDateKey(now);
   const month = query.month ?? today.slice(0, 7);
@@ -153,6 +159,7 @@ function buildData(
             leftAt: selectedParticipant.leftAt,
             challengeStart: challenge.startDate,
             challengeEnd: challenge.endDate,
+            penaltyStart: challenge.penaltyStartDate,
             excludedDates,
             exemptionDates: exemptionMap.get(selectedParticipant.id) ?? new Set(),
             submittedAt: submissionMap.get(selectedParticipant.id) ?? [],
@@ -171,6 +178,7 @@ function buildData(
       leftAt: participant.leftAt,
       challengeStart: challenge.startDate,
       challengeEnd: challenge.endDate,
+      penaltyStart: challenge.penaltyStartDate,
       excludedDates,
       exemptionDates: exemptionMap.get(participant.id) ?? new Set(),
       submittedAt: submissionMap.get(participant.id) ?? [],
@@ -217,6 +225,7 @@ function buildData(
         leftAt: selectedParticipant.leftAt,
         challengeStart: challenge.startDate,
         challengeEnd: challenge.endDate,
+        penaltyStart: challenge.penaltyStartDate,
         excludedDates,
         exemptionDates: exemptionMap.get(selectedParticipant.id) ?? new Set(),
         submittedAt: submissionMap.get(selectedParticipant.id) ?? [],
@@ -239,6 +248,15 @@ function buildData(
     },
     now: now.toISOString(),
     challenge,
+    penaltyNotice: {
+      phase: penaltyPhaseFor(today, challenge.penaltyStartDate),
+      startDate: challenge.penaltyStartDate,
+      daysUntilStart: daysUntil(today, challenge.penaltyStartDate),
+      dailyAmount: penaltyRateForDate(
+        challenge.penaltyStartDate,
+        penaltyRates.map((rate) => ({ effectiveFrom: rate.effective_from, amount: Number(rate.amount) })),
+      ),
+    },
     participants,
     selectedParticipant,
     todayStatus,
@@ -286,6 +304,7 @@ function demoRows(now: Date) {
     name: "2기",
     start_date: startDate,
     end_date: "2026-12-31",
+    penalty_start_date: startDate,
   };
   const participants: ParticipantRow[] = [
     { id: 1, name: "김하늘", joined_at: startDate, left_at: null, is_active: true },
@@ -366,6 +385,7 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
       rows.excluded,
       rows.notices,
       true,
+      [{ effective_from: rows.challenge.start_date, amount: 2000 }],
     );
     data.participantGroups.push({
       id: "2", name: "1기", isActive: false,
@@ -380,7 +400,7 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
   const db = getSupabaseAdmin();
   const { data: challenge, error: challengeError } = await db
     .from("challenges")
-    .select("id,name,start_date,end_date")
+    .select("id,name,start_date,end_date,penalty_start_date")
     .eq("is_active", true)
     .maybeSingle();
   if (challengeError) throw challengeError;
@@ -390,6 +410,7 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
       habit: { week: [], recentMisses: 0 },
       now: now.toISOString(),
       challenge: null,
+      penaltyNotice: null,
       participants: [],
       participantGroups: [],
       selectedParticipant: null,
@@ -429,6 +450,12 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
     ]);
   const firstError = participantsError ?? submissionsError ?? exemptionsError ?? excludedError ?? noticesError;
   if (firstError) throw firstError;
+  const { data: penaltyRates, error: penaltyRateError } = await db
+    .from("penalty_rates")
+    .select("amount,effective_from")
+    .eq("challenge_id", challengeId)
+    .order("effective_from");
+  if (penaltyRateError) throw penaltyRateError;
   const [{ data: rosterChallenges, error: rosterChallengeError }, { data: rosterMembers, error: rosterMemberError }] = await Promise.all([
     db.from("challenges").select("id,name,is_active,start_date").lte("start_date", kstDateKey(now)),
     db.from("participants").select("id,challenge_id,name,affiliation,is_active").order("name"),
@@ -445,6 +472,7 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
     (excluded ?? []) as ExcludedRow[],
     (notices ?? []) as NoticeRow[],
     false,
+    (penaltyRates ?? []) as Array<{ effective_from: string; amount: number }>,
   );
   data.participantGroups = groupParticipants(rosterChallenges ?? [], rosterMembers ?? []);
   return data;

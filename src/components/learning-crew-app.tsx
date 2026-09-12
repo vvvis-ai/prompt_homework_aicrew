@@ -26,7 +26,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { canParticipantEdit, formatKstTime, kstDateKey } from "@/lib/time";
+import { canParticipantEdit, formatKstTime, formatRemainingUntilCutoff, kstDateKey } from "@/lib/time";
+import { daysUntil } from "@/lib/business";
 import type { AppData, CalendarDay, DailyStatus, Submission } from "@/lib/types";
 import { MissionCard, ReminderCard, WeekRecord } from "./habit-cards";
 import { ParticipantDirectory } from "./participant-directory";
@@ -44,13 +45,23 @@ const statusContent: Record<DailyStatus, { icon: string; title: string; detail: 
 };
 
 const statusMark: Record<DailyStatus, string> = {
-  completed: "✓",
+  completed: "✅",
   pending: "·",
-  missed: "×",
-  exempt: "E",
+  missed: "❌",
+  exempt: "🟦",
   excluded: "",
   future: "",
   not_enrolled: "",
+};
+
+const statusLabel: Record<DailyStatus, string> = {
+  completed: "제출 완료",
+  pending: "오늘 도전",
+  missed: "미제출",
+  exempt: "면제",
+  excluded: "숙제 없는 날",
+  future: "예정",
+  not_enrolled: "참여 기간 아님",
 };
 
 function addDate(dateKey: string, days: number) {
@@ -101,6 +112,16 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   const [toast, setToast] = useState("");
   const [hydrated, setHydrated] = useState(false);
   const [receipt, setReceipt] = useState<{ onTime: boolean; url: string } | null>(null);
+  const [remaining, setRemaining] = useState<string | null>(null);
+  const [reminderSet, setReminderSet] = useState(true);
+  const [editing, setEditing] = useState<Submission | null>(null);
+
+  useEffect(() => {
+    const update = () => setRemaining(formatRemainingUntilCutoff(new Date()));
+    update();
+    const timer = window.setInterval(update, 60000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -109,6 +130,12 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
         setBookmarks(JSON.parse(window.localStorage.getItem("aicrew_bookmarks") ?? "[]"));
       } catch {
         setBookmarks([]);
+      }
+      try {
+        const saved = JSON.parse(window.localStorage.getItem("aicrew_reminder") ?? "null") as { participantId?: string } | null;
+        setReminderSet(Boolean(saved));
+      } catch {
+        setReminderSet(false);
       }
       setHydrated(true);
     }, 0);
@@ -232,29 +259,40 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
     finally { setBusy(false); }
   };
 
-  const editSubmission = async (submission: Submission) => {
-    const password = window.prompt("수정·삭제 비밀번호를 입력해주세요.");
-    if (!password) return;
-    const title = window.prompt("제목 (비워도 됩니다)", submission.title ?? "");
-    if (title === null) return;
-    const url = window.prompt("링크", submission.url);
-    if (!url) return;
-    const description = window.prompt("간단한 설명 (비워도 됩니다)", submission.description ?? "");
-    if (description === null) return;
-    const response = await fetch(`/api/submissions/${submission.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ participantId, password, title, url, description }),
-    });
-    const result = (await response.json()) as { error?: string };
-    setToast(response.ok ? "프롬프트를 수정했습니다." : (result.error ?? "수정하지 못했습니다."));
-    if (response.ok) await refresh();
+  const saveEdit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editing) return;
+    const formData = new FormData(event.currentTarget);
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/submissions/${editing.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          participantId,
+          password: formData.get("password"),
+          title: formData.get("title"),
+          url: formData.get("url"),
+          description: formData.get("description"),
+        }),
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "수정하지 못했습니다.");
+      setToast("프롬프트를 수정했습니다.");
+      setEditing(null);
+      await refresh();
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "수정하지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const deleteSubmission = async (submission: Submission) => {
+  const removeEdit = async (password: string) => {
+    if (!editing) return;
     const isLastValid = data.calendar.some(
       (day) =>
-        day.date === kstDateKey(submission.submittedAt) &&
+        day.date === kstDateKey(editing.submittedAt) &&
         day.status === "completed" &&
         day.submissions.length === 1,
     );
@@ -262,16 +300,23 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
       ? "이 링크를 삭제하면 오늘 숙제가 미완료 상태가 될 수 있습니다. 삭제하시겠습니까?"
       : "이 링크를 삭제하시겠습니까?";
     if (!window.confirm(message)) return;
-    const password = window.prompt("수정·삭제 비밀번호를 입력해주세요.");
-    if (!password) return;
-    const response = await fetch(`/api/submissions/${submission.id}`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ participantId, password }),
-    });
-    const result = (await response.json()) as { error?: string };
-    setToast(response.ok ? "프롬프트를 삭제했습니다." : (result.error ?? "삭제하지 못했습니다."));
-    if (response.ok) await refresh();
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/submissions/${editing.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participantId, password }),
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "삭제하지 못했습니다.");
+      setToast("프롬프트를 삭제했습니다.");
+      setEditing(null);
+      await refresh();
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "삭제하지 못했습니다.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const visibleFeed = useMemo(
@@ -304,6 +349,11 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   const crewGoalProgress = crewCompletionRate === null
     ? 0
     : Math.min(100, Math.round((crewCompletionRate / data.crewGrowth.goalRate) * 100));
+  const penaltyStart = data.penaltyNotice?.startDate;
+  const withinFirstWeek = penaltyStart !== undefined
+    && kstDateKey(data.now) >= penaltyStart
+    && daysUntil(penaltyStart, kstDateKey(data.now)) < 5;
+  const promoteReminder = withinFirstWeek && !reminderSet;
   const firstDayOffset = data.calendar[0]
     ? (new Date(`${data.calendar[0].date}T00:00:00Z`).getUTCDay() + 6) % 7
     : 0;
@@ -336,6 +386,8 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
           <section className="min-w-0">
             {tab === "home" && (
               <div className="grid gap-5">
+                <PenaltyNotice notice={data.penaltyNotice} now={data.now} />
+                {promoteReminder && <ReminderCard key={`top-${participantId}`} participantId={participantId} demo={data.demo} />}
                 {data.notices[0] && (
                   <article className="notice-card">
                     <Megaphone size={20} />
@@ -351,6 +403,9 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     <p className="text-sm font-bold opacity-70">{displayDate(kstDateKey(data.now))}</p>
                     <h1 className="mt-1 text-2xl font-black tracking-tight">{status.title}</h1>
                     <p className="mt-2 font-medium opacity-80">{status.detail}</p>
+                    {data.todayStatus === "pending" && remaining && (
+                      <p className="mt-2 text-sm font-black" role="status">23:00까지 {remaining} 남았어요</p>
+                    )}
                   </div>
                   {data.todayStatus === "pending" && (
                     <button className="white-button" type="button" onClick={() => setTab("submit")}>링크 등록하기</button>
@@ -382,7 +437,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                         key={day.date}
                         type="button"
                         onClick={() => setSelectedDay(day)}
-                        aria-label={`${day.date} ${day.status}`}
+                        aria-label={`${displayDate(day.date)} ${statusLabel[day.status]}`}
                       >
                         <span>{day.day}</span>
                         <strong>{statusMark[day.status]}</strong>
@@ -393,7 +448,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     <span>✅ 완료</span><span>❌ 미제출</span><span>🟦 면제</span><span className="text-slate-400">회색 비대상일</span>
                   </div>
                 </section>
-                <ReminderCard key={participantId} participantId={participantId} demo={data.demo} />
+                {!promoteReminder && <ReminderCard key={participantId} participantId={participantId} demo={data.demo} />}
               </div>
             )}
 
@@ -408,7 +463,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                   </div>
                   <span className="grid size-12 place-items-center rounded-2xl bg-lime-100 text-lime-800"><Plus size={25} /></span>
                 </div>
-                {receipt && <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status"><strong>{receipt.onTime ? "오늘 숙제 인정 완료" : "링크 공유 완료 · 오늘 숙제 인정에는 미반영"}</strong><a className="mt-2 block break-all text-sm text-blue-700 underline" href={receipt.url} target="_blank" rel="noopener noreferrer">등록한 링크 확인</a><p className="mt-2 text-xs text-slate-600">공유 탭에서 등록 내용을 확인할 수 있어요. 수정·삭제는 등록 당일 23:00까지 가능합니다.</p></div>}
+                {receipt && <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status"><strong>{receipt.onTime ? "오늘 숙제 인정 완료" : "링크 공유 완료 · 오늘 숙제 인정에는 미반영"}</strong><a className="mt-2 block break-all text-sm text-blue-700 underline" href={receipt.url} target="_blank" rel="noopener noreferrer">등록한 링크 확인</a><p className="mt-2 text-xs text-slate-600">공유 탭에서 등록 내용을 확인할 수 있어요. 수정·삭제는 등록 당일 23:00까지 가능합니다.</p><button className="secondary-button mt-3" type="button" onClick={() => setTab("home")}>내 현황 보기<ArrowRight size={17} /></button></div>}
                 <form className="grid gap-5" onSubmit={onSubmit}>
                   <Field label="AI 활용 링크" required>
                     <input className="form-input" name="url" type="url" required maxLength={2048} placeholder="AI에서 공유 링크를 복사해 붙여넣으세요" />
@@ -464,8 +519,18 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                 {!busy && visibleFeed.length === 0 && (
                   <section className="surface-card py-12 text-center">
                     <Sparkles className="mx-auto text-blue-500" size={30} />
-                    <p className="mt-3 font-extrabold">조건에 맞는 프롬프트가 없습니다</p>
-                    <p className="mt-1 text-sm text-slate-500">다른 날짜나 검색어를 확인해보세요.</p>
+                    {search.trim() || featuredOnly || savedOnly ? (
+                      <>
+                        <p className="mt-3 font-extrabold">조건에 맞는 프롬프트가 없습니다</p>
+                        <p className="mt-1 text-sm text-slate-500">다른 날짜나 검색어를 확인해보세요.</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="mt-3 font-extrabold">첫 링크를 남겨 크루의 첫 기록을 만들어요</p>
+                        <p className="mt-1 text-sm text-slate-500">아직 이날 공유된 프롬프트가 없어요.</p>
+                        <button className="secondary-button mx-auto mt-4" type="button" onClick={() => setTab("submit")}>링크 등록하기<ArrowRight size={17} /></button>
+                      </>
+                    )}
                   </section>
                 )}
                 {visibleFeed.map((submission) => (
@@ -490,8 +555,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     </a>
                     {submission.participantId === participantId && canParticipantEdit(submission.submittedAt, data.now) && (
                       <div className="mt-4 flex gap-2 border-t border-slate-100 pt-3">
-                        <button className="small-action" type="button" onClick={() => editSubmission(submission)}><Pencil size={15} /> 수정</button>
-                        <button className="small-action text-red-600" type="button" onClick={() => deleteSubmission(submission)}><Trash2 size={15} /> 삭제</button>
+                        <button className="small-action" type="button" onClick={() => setEditing(submission)}><Pencil size={15} /> 수정·삭제</button>
                         <span className="ml-auto self-center text-xs font-semibold text-slate-400">오늘 등록한 글만 가능</span>
                       </div>
                     )}
@@ -589,6 +653,35 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
         </div>
       )}
 
+      {editing && (
+        <div className="modal-backdrop" role="presentation" onMouseDown={() => { if (!busy) setEditing(null); }}>
+          <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="submission-edit-title" onMouseDown={(event) => event.stopPropagation()}>
+            <button className="absolute right-4 top-4 rounded-full p-2 hover:bg-slate-100" type="button" aria-label="닫기" disabled={busy} onClick={() => setEditing(null)}><X size={20} /></button>
+            <p className="text-sm font-bold text-blue-700">{displayDate(kstDateKey(editing.submittedAt))} 등록</p>
+            <h2 className="mt-1 text-xl font-black" id="submission-edit-title">등록한 링크 수정</h2>
+            <form className="mt-5 grid gap-4" onSubmit={saveEdit}>
+              <Field label="AI 활용 링크" required>
+                <input className="form-input" name="url" type="url" required maxLength={2048} defaultValue={editing.url} />
+              </Field>
+              <Field label="제목" hint="선택사항">
+                <input className="form-input" name="title" maxLength={120} defaultValue={editing.title ?? ""} />
+              </Field>
+              <Field label="간단한 설명" hint="선택사항">
+                <textarea className="form-input min-h-24 resize-y" name="description" maxLength={1000} defaultValue={editing.description ?? ""} />
+              </Field>
+              <Field label="수정·삭제 비밀번호" required>
+                <input className="form-input" name="password" type="password" required minLength={4} maxLength={72} autoComplete="current-password" placeholder="등록할 때 정한 비밀번호" />
+              </Field>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
+                <button className="small-action text-red-600" type="button" disabled={busy} onClick={(event) => { const form = event.currentTarget.closest("form"); const password = form?.querySelector<HTMLInputElement>("input[name=password]")?.value ?? ""; if (password.length < 4) { setToast("삭제하려면 비밀번호를 먼저 입력해주세요."); return; } void removeEdit(password); }}><Trash2 size={15} /> 삭제</button>
+                <div className="flex gap-2"><button className="filter-button" type="button" disabled={busy} onClick={() => setEditing(null)}>취소</button><button className="primary-button !w-auto" type="submit" disabled={busy}>{busy ? "처리 중..." : "저장"}</button></div>
+              </div>
+            </form>
+            <p className="mt-3 text-xs leading-5 text-slate-500">수정·삭제는 등록 당일 23:00까지 가능합니다.</p>
+          </section>
+        </div>
+      )}
+
       {toast && (
         <div className="toast" role="status" aria-live="polite">
           <span>{toast}</span>
@@ -596,6 +689,30 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
         </div>
       )}
     </main>
+  );
+}
+
+function PenaltyNotice({ notice, now }: { notice: AppData["penaltyNotice"]; now: string }) {
+  if (!notice || notice.phase === "running") return null;
+  const amount = new Intl.NumberFormat("ko-KR").format(notice.dailyAmount);
+  const startLabel = displayDate(notice.startDate);
+  const weekday = ["일", "월", "화", "수", "목", "금", "토"][new Date(`${notice.startDate}T00:00:00Z`).getUTCDay()];
+  const daysLeft = notice.daysUntilStart || daysUntil(kstDateKey(now), notice.startDate);
+  if (notice.phase === "first_day") {
+    return (
+      <article className="rounded-3xl border-2 border-amber-300 bg-amber-50 p-5" role="status">
+        <p className="text-sm font-black text-amber-700">오늘부터 시작이에요</p>
+        <h2 className="mt-1 text-xl font-black text-amber-950">지금부터 미제출은 하루 {amount}원이 차감돼요</h2>
+        <p className="mt-2 text-sm font-semibold leading-6 text-amber-900">평일 23:00까지 오늘 써본 AI 링크를 남겨주세요. 주말과 휴일, 면제일은 차감하지 않아요.</p>
+      </article>
+    );
+  }
+  return (
+    <article className="rounded-3xl border-2 border-blue-200 bg-blue-50 p-5" role="status">
+      <p className="text-sm font-black text-blue-700">시작까지 {daysLeft}일</p>
+      <h2 className="mt-1 text-xl font-black text-blue-950">{startLabel}({weekday})부터 시작해요</h2>
+      <p className="mt-2 text-sm font-semibold leading-6 text-blue-900">그날부터 평일 23:00까지 미제출이면 하루 {amount}원이 차감돼요. 지금은 연습 기간이니 미리 링크를 남겨보셔도 좋아요.</p>
+    </article>
   );
 }
 

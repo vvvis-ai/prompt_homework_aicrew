@@ -47,3 +47,13 @@ export function demoMutation() {
 export function requireDeleteConfirmation(value: unknown) {
   if (value !== "DELETE") throw new Error("삭제 확인 문구가 올바르지 않습니다.");
 }
+
+export function resolvePaidAt(
+  paidAmount: number,
+  paidAt: string | null | undefined,
+  today: string,
+): string | null {
+  if (paidAmount <= 0 || !paidAt) return null;
+  if (paidAt > today) throw new Error("납부 확인일은 오늘 이후로 지정할 수 없습니다.");
+  return paidAt;
+}

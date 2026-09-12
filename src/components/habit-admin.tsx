@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { Bell, Copy, Plus, Sparkles, Trash2 } from "lucide-react";
 import type { AdminData, AdminReminder, DailyStatus } from "@/lib/types";
-import { kstDateKey } from "@/lib/time";
+import { formatRemainingUntilCutoff, kstDateKey } from "@/lib/time";
 import { starterMission } from "@/lib/habits";
 
 export function HabitOverview({ data }: { data: AdminData }) {
@@ -54,7 +54,10 @@ export function HabitOverview({ data }: { data: AdminData }) {
   async function copy() {
     const pending = people.filter((person) => person.status === "pending");
     if (!pending.length) { setMessage("현재 마감 전 미제출자가 없습니다."); return; }
-    const text = `오늘 AI와 3분, 함께해요 🌱\n아직 링크를 남기지 않으셨다면 가벼운 질문 하나부터 해보세요. 결과가 완벽하지 않아도 괜찮아요.\n23:00까지 직접 써본 AI 링크를 남겨주세요.\nhttps://prompt-homework-aicrew.antae98.workers.dev`;
+    const today = kstDateKey(new Date());
+    const remaining = formatRemainingUntilCutoff(new Date());
+    const deadline = remaining ? `마감까지 ${remaining} 남았어요.` : "오늘 제출 마감이 지났어요.";
+    const text = `[${today}] 오늘 AI와 3분, 함께해요 🌱\n아직 링크를 남기지 않으셨다면 가벼운 질문 하나부터 해보세요. 결과가 완벽하지 않아도 괜찮아요.\n23:00까지 직접 써본 AI 링크를 남겨주세요. ${deadline}\nhttps://prompt-homework-aicrew.antae98.workers.dev`;
     try { await navigator.clipboard.writeText(text); setMessage(`안내문을 복사했습니다. 현재 미제출 ${pending.length}명에게 전달할 수 있습니다. 이름은 문구에 포함하지 않았습니다.`); }
     catch { setMessage(text); }
   }
@@ -70,6 +73,14 @@ export function HabitOverview({ data }: { data: AdminData }) {
           <Metric label="오늘 실천" value={`${people.filter((person) => person.status === "completed").length}명`} />
           <Metric label="이번 주 실천" value={`${completed}/${target}회`} />
           <Metric label="안부 확인" value={`${needsHelp.length}명`} />
+        </div>
+        <div className="mt-3 rounded-2xl bg-white/80 p-3 sm:p-4">
+          <p className="text-xs font-bold text-slate-500">이번 주 확정 차감</p>
+          <p className="mt-2 text-xl font-black text-rose-700 sm:text-2xl">
+            {new Intl.NumberFormat("ko-KR").format(data.weeklyPenalty.amount)}원
+            <span className="ml-2 text-sm font-bold text-slate-500">{data.weeklyPenalty.missedCount}건 · {data.weeklyPenalty.participantCount}명</span>
+          </p>
+          <p className="mt-1 text-xs text-slate-500">조회 월과 무관하게 이번 주 기준이며, 마감 전 대기는 포함하지 않습니다.</p>
         </div>
       </section>
       <section className="surface-card">

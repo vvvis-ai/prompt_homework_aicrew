@@ -6,6 +6,7 @@ import {
   calculatePenalty,
   calculateStreak,
   evaluateDailyStatus,
+  paymentStatusFor,
   summarizeStatuses,
 } from "@/lib/business";
 import { dateKeysInMonth, kstDateKey } from "@/lib/time";
@@ -66,9 +67,12 @@ export async function getAdminData(
     const participants = participantApps.map((app, index) => {
       const participant = base.participants[index];
       const penaltyAmount = app.summary.missedDays * 2000;
+      const paidAt = base.challenge?.startDate ?? null;
       return {
         ...participant,
         paidAmount: 80000,
+        paidAt,
+        paymentStatus: paymentStatusFor({ paidAmount: 80000, paidAt, fee: 80000 }),
         refundedAmount: null,
         isActive: true,
         ...app.summary,
@@ -93,6 +97,7 @@ export async function getAdminData(
     return {
       demo: true,
       habit: participantApps.map((app, index) => ({ ...app.habit, participantId: base.participants[index].id, name: base.participants[index].name, active: app.todayStatus !== "not_enrolled" })),
+      weeklyPenalty: { missedCount: 0, amount: 0, participantCount: 0 },
       session,
       challenge: base.challenge
         ? { ...base.challenge, defaultFee: 80000, defaultPenalty: 2000, isActive: true }
@@ -105,6 +110,8 @@ export async function getAdminData(
       today: todayRows,
       metrics: {
         totalParticipants: participants.length,
+        paidCount: participants.filter((participant) => participant.paymentStatus === "paid").length,
+        unpaidCount: participants.filter((participant) => participant.paymentStatus === "unpaid").length,
         todayCompleted: todayRows.filter((row) => row.status === "completed").length,
         todayPending: todayRows.filter((row) => row.status === "pending").length,
         todayMissed: todayRows.filter((row) => row.status === "missed").length,
@@ -130,7 +137,7 @@ export async function getAdminData(
   const db = getSupabaseAdmin();
   const { data: challengeRows, error: challengeListError } = await db
     .from("challenges")
-    .select("id,name,start_date,end_date,default_fee,default_penalty,is_active")
+    .select("id,name,start_date,end_date,penalty_start_date,default_fee,default_penalty,is_active")
     .order("start_date", { ascending: false });
   if (challengeListError) throw challengeListError;
   const chosen =
@@ -144,11 +151,12 @@ export async function getAdminData(
       session,
       challenge: null,
       habit: [],
+      weeklyPenalty: { missedCount: 0, amount: 0, participantCount: 0 },
       challenges: [],
       operators,
       participants: [],
       today: [],
-      metrics: { totalParticipants: 0, todayCompleted: 0, todayPending: 0, todayMissed: 0, monthMissed: 0, monthPenalty: 0, monthLinks: 0 },
+      metrics: { totalParticipants: 0, paidCount: 0, unpaidCount: 0, todayCompleted: 0, todayPending: 0, todayMissed: 0, monthMissed: 0, monthPenalty: 0, monthLinks: 0 },
       matrix: [],
       submissions: [],
       exemptions: [],
@@ -161,7 +169,7 @@ export async function getAdminData(
   }
   const challengeIdNumber = chosen.id;
   const results = await Promise.all([
-    db.from("participants").select("id,name,affiliation,joined_at,left_at,paid_amount,refunded_amount,is_active").eq("challenge_id", challengeIdNumber).order("name"),
+    db.from("participants").select("id,name,affiliation,joined_at,left_at,paid_amount,paid_at,refunded_amount,is_active").eq("challenge_id", challengeIdNumber).order("name"),
     db.from("submissions").select("id,participant_id,title,url,description,submitted_at,is_featured").eq("challenge_id", challengeIdNumber).order("submitted_at", { ascending: false }),
     db.from("exemptions").select("id,participant_id,exemption_date,reason").eq("challenge_id", challengeIdNumber).order("exemption_date", { ascending: false }),
     db.from("excluded_dates").select("id,excluded_date,reason,source").eq("challenge_id", challengeIdNumber).order("excluded_date"),
@@ -211,6 +219,8 @@ export async function getAdminData(
   const days = dateKeysInMonth(selectedMonth);
   const monthlyPenaltyByParticipant = new Map<string, number>();
   const habit: AdminData["habit"] = [];
+  const currentWeek = new Set(weekDates(today));
+  const weeklyPenalty = { missedCount: 0, amount: 0, participantCount: 0 };
   const participants = participantRows.map((row) => {
     const id = String(row.id);
     const participantSubmissions = submissions
@@ -227,6 +237,7 @@ export async function getAdminData(
       leftAt: row.left_at,
       challengeStart: chosen.start_date,
       challengeEnd: chosen.end_date,
+      penaltyStart: chosen.penalty_start_date,
       excludedDates,
       exemptionDates,
       submittedAt: participantSubmissions,
@@ -237,15 +248,28 @@ export async function getAdminData(
       week: weekDates(today).map((date) => ({ date, status: allStatuses.find((day) => day.date === date)?.status ?? (date > today ? "future" : "not_enrolled") })),
     });
     monthlyPenaltyByParticipant.set(id, calculatePenalty(monthly, rates));
+    const weekMissed = allStatuses.filter((item) => currentWeek.has(item.date) && item.status === "missed");
+    if (weekMissed.length > 0) {
+      weeklyPenalty.missedCount += weekMissed.length;
+      weeklyPenalty.amount += calculatePenalty(weekMissed, rates);
+      weeklyPenalty.participantCount += 1;
+    }
     const summary = summarizeStatuses(monthly.map((item) => item.status));
     const penaltyAmount = calculatePenalty(allStatuses, rates);
+    const paidAmount = Number(row.paid_amount);
     return {
       id,
       name: row.name,
       affiliation: row.affiliation,
       joinedAt: row.joined_at,
       leftAt: row.left_at,
-      paidAmount: Number(row.paid_amount),
+      paidAmount,
+      paidAt: row.paid_at,
+      paymentStatus: paymentStatusFor({
+        paidAmount,
+        paidAt: row.paid_at,
+        fee: Number(chosen.default_fee),
+      }),
       refundedAmount: row.refunded_amount === null ? null : Number(row.refunded_amount),
       isActive: row.is_active,
       ...summary,
@@ -256,7 +280,7 @@ export async function getAdminData(
       ).length,
       streak: calculateStreak(allStatuses.map((item) => item.status)),
       penaltyAmount,
-      expectedRefund: Number(row.paid_amount) - penaltyAmount,
+      expectedRefund: paidAmount - penaltyAmount,
     };
   });
   const matrix = participantRows.map((row) => {
@@ -280,6 +304,7 @@ export async function getAdminData(
             leftAt: row.left_at,
             challengeStart: chosen.start_date,
             challengeEnd: chosen.end_date,
+            penaltyStart: chosen.penalty_start_date,
             excludedDates,
             exemptionDates,
             submittedAt,
@@ -302,6 +327,7 @@ export async function getAdminData(
         leftAt: row.left_at,
         challengeStart: chosen.start_date,
         challengeEnd: chosen.end_date,
+        penaltyStart: chosen.penalty_start_date,
         excludedDates,
         exemptionDates: new Set(
           exemptionRows
@@ -334,11 +360,13 @@ export async function getAdminData(
     demo: false,
     session,
     habit,
+    weeklyPenalty,
     challenge: {
       id: String(chosen.id),
       name: chosen.name,
       startDate: chosen.start_date,
       endDate: chosen.end_date,
+      penaltyStartDate: chosen.penalty_start_date,
       defaultFee: Number(chosen.default_fee),
       defaultPenalty: Number(chosen.default_penalty),
       isActive: chosen.is_active,
@@ -348,6 +376,7 @@ export async function getAdminData(
       name: row.name,
       startDate: row.start_date,
       endDate: row.end_date,
+      penaltyStartDate: row.penalty_start_date,
       defaultFee: Number(row.default_fee),
       defaultPenalty: Number(row.default_penalty),
       isActive: row.is_active,
@@ -357,6 +386,8 @@ export async function getAdminData(
     today: todayRows,
     metrics: {
       totalParticipants: participants.filter((participant) => participant.isActive).length,
+      paidCount: participants.filter((participant) => participant.paymentStatus === "paid").length,
+      unpaidCount: participants.filter((participant) => participant.paymentStatus === "unpaid").length,
       todayCompleted: todayRows.filter((row) => row.status === "completed").length,
       todayPending: todayRows.filter((row) => row.status === "pending").length,
       todayMissed: todayRows.filter((row) => row.status === "missed").length,

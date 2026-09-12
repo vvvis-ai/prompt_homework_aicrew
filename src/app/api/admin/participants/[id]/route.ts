@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { adminContext, apiError, demoMutation, requireDeleteConfirmation, writeAudit } from "@/server/admin-mutations";
+import { adminContext, apiError, demoMutation, requireDeleteConfirmation, resolvePaidAt, writeAudit } from "@/server/admin-mutations";
+import { kstDateKey } from "@/lib/time";
 
 const schema = z.object({
   challengeId: z.coerce.number().int().positive(),
@@ -8,6 +9,7 @@ const schema = z.object({
   joinedAt: z.iso.date(),
   leftAt: z.iso.date().nullable().optional(),
   paidAmount: z.number().int().nonnegative(),
+  paidAt: z.iso.date().nullable().optional(),
   isActive: z.boolean(),
 });
 
@@ -23,8 +25,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const body = schema.parse(await request.json());
     if (!Number.isSafeInteger(id) || id < 1) throw new Error("잘못된 참가자입니다.");
     if (body.leftAt && body.leftAt < body.joinedAt) throw new Error("퇴장일은 참여일보다 빠를 수 없습니다.");
+    const paidAt = resolvePaidAt(body.paidAmount, body.paidAt, kstDateKey());
     if (ctx.demo) return demoMutation();
-    const { data: before, error: readError } = await ctx.db.from("participants").select("id,challenge_id,name,affiliation,joined_at,left_at,paid_amount,is_active").eq("id", id).eq("challenge_id", body.challengeId).single();
+    const { data: before, error: readError } = await ctx.db.from("participants").select("id,challenge_id,name,affiliation,joined_at,left_at,paid_amount,paid_at,is_active").eq("id", id).eq("challenge_id", body.challengeId).single();
     if (readError) throw readError;
     const { data: after, error } = await ctx.db.from("participants").update({
       name: body.name,
@@ -32,12 +35,14 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       joined_at: body.joinedAt,
       left_at: body.leftAt ?? null,
       paid_amount: body.paidAmount,
+      paid_at: paidAt,
       is_active: body.isActive,
-    }).eq("id", id).eq("challenge_id", body.challengeId).select("id,challenge_id,name,affiliation,joined_at,left_at,paid_amount,is_active").single();
+    }).eq("id", id).eq("challenge_id", body.challengeId).select("id,challenge_id,name,affiliation,joined_at,left_at,paid_amount,paid_at,is_active").single();
     if (error) throw error;
     const changes = [
       before.left_at !== after.left_at ? "leave_update" : null,
       before.paid_amount !== after.paid_amount ? "payment_update" : null,
+      before.paid_at !== after.paid_at ? "payment_confirm_update" : null,
       before.is_active !== after.is_active ? "activation_update" : null,
     ].filter(Boolean);
     await writeAudit({ challengeId: body.challengeId, operatorId: ctx.operatorId, action: changes.join("+") || "update", entityType: "participant", entityId: id, before, after });
@@ -71,7 +76,7 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
       .delete()
       .eq("id", id)
       .eq("challenge_id", body.challengeId)
-      .select("id,challenge_id,name,affiliation,joined_at,left_at,paid_amount,is_active")
+      .select("id,challenge_id,name,affiliation,joined_at,left_at,paid_amount,paid_at,is_active")
       .single();
     if (error) throw error;
     await writeAudit({ challengeId: body.challengeId, operatorId: ctx.operatorId, action: "delete", entityType: "participant", entityId: id, before });

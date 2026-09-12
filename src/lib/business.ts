@@ -1,4 +1,4 @@
-import type { DailyStatus } from "@/lib/types";
+import type { DailyStatus, PaymentStatus } from "@/lib/types";
 import {
   dateKeysBetween,
   isMissConfirmed,
@@ -14,6 +14,7 @@ export type StatusInput = {
   leftAt: string | null;
   challengeStart: string;
   challengeEnd: string;
+  penaltyStart?: string;
   excludedDates: Set<string>;
   exemptionDates: Set<string>;
   submittedAt: string[];
@@ -30,6 +31,7 @@ export function evaluateDailyStatus(input: StatusInput): DailyStatus {
   ) {
     return "not_enrolled";
   }
+  if (input.penaltyStart !== undefined && input.dateKey < input.penaltyStart) return "excluded";
   if (isWeekend(input.dateKey) || input.excludedDates.has(input.dateKey)) return "excluded";
   if (input.exemptionDates.has(input.dateKey)) return "exempt";
   if (
@@ -100,6 +102,29 @@ export function penaltyRateForDate(
   return [...rates]
     .filter((rate) => rate.effectiveFrom <= dateKey)
     .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0]?.amount ?? 0;
+}
+
+export function paymentStatusFor(input: {
+  paidAmount: number;
+  paidAt: string | null;
+  fee: number;
+}): PaymentStatus {
+  if (input.paidAmount <= 0) return "unpaid";
+  if (input.paidAt === null) return "unconfirmed";
+  return input.paidAmount >= input.fee ? "paid" : "partial";
+}
+
+export type PenaltyPhase = "before" | "first_day" | "running";
+
+export function penaltyPhaseFor(today: string, penaltyStartDate: string): PenaltyPhase {
+  if (today < penaltyStartDate) return "before";
+  if (today === penaltyStartDate) return "first_day";
+  return "running";
+}
+
+export function daysUntil(today: string, target: string): number {
+  if (target <= today) return 0;
+  return dateKeysBetween(today, target).length - 1;
 }
 
 export function calculatePenalty(

@@ -33,16 +33,16 @@ export type Database = {
         created_at: string;
       }>;
       challenges: Table<
-        { id: number; name: string; start_date: string; end_date: string; default_fee: number; default_penalty: number; is_active: boolean; created_at: string; updated_at: string },
-        { id?: number; name: string; start_date: string; end_date: string; default_fee?: number; default_penalty?: number; is_active?: boolean; created_at?: string; updated_at?: string }
+        { id: number; name: string; start_date: string; end_date: string; penalty_start_date: string; default_fee: number; default_penalty: number; is_active: boolean; created_at: string; updated_at: string },
+        { id?: number; name: string; start_date: string; end_date: string; penalty_start_date?: string; default_fee?: number; default_penalty?: number; is_active?: boolean; created_at?: string; updated_at?: string }
       >;
       operators: Table<
         { id: number; name: string; is_active: boolean; created_at: string },
         { id?: number; name: string; is_active?: boolean; created_at?: string }
       >;
       participants: Table<
-        { id: number; challenge_id: number; name: string; affiliation: string; joined_at: string; left_at: string | null; paid_amount: number; refunded_amount: number | null; is_active: boolean; created_at: string; updated_at: string },
-        { id?: number; challenge_id: number; name: string; affiliation?: string; joined_at: string; left_at?: string | null; paid_amount?: number; refunded_amount?: number | null; is_active?: boolean; created_at?: string; updated_at?: string }
+        { id: number; challenge_id: number; name: string; affiliation: string; joined_at: string; left_at: string | null; paid_amount: number; paid_at: string | null; refunded_amount: number | null; is_active: boolean; created_at: string; updated_at: string },
+        { id?: number; challenge_id: number; name: string; affiliation?: string; joined_at: string; left_at?: string | null; paid_amount?: number; paid_at?: string | null; refunded_amount?: number | null; is_active?: boolean; created_at?: string; updated_at?: string }
       >;
       submissions: Table<
         { id: number; challenge_id: number; participant_id: number; title: string | null; url: string; normalized_url: string; description: string | null; edit_password_hash: string; submitted_at: string; is_featured: boolean; created_at: string; updated_at: string },
