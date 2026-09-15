@@ -1,6 +1,6 @@
 import { hashPassword } from "@/server/password-service";
 import { isSubmissionOnTime } from "@/lib/time";
-import { normalizeUrl } from "@/lib/url";
+import { getSubmissionUrlError, normalizeUrl } from "@/lib/url";
 import { getSupabaseAdmin, isDemoMode } from "@/server/supabase";
 import { z } from "zod";
 
@@ -19,6 +19,8 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return Response.json({ error: "필수 입력값과 형식을 확인해주세요." }, { status: 400 });
   }
+  const urlError = getSubmissionUrlError(parsed.data.url);
+  if (urlError) return Response.json({ error: urlError }, { status: 400 });
   let normalizedUrl: string;
   try {
     normalizedUrl = normalizeUrl(parsed.data.url);

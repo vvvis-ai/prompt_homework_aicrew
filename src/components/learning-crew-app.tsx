@@ -28,6 +28,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { canParticipantEdit, formatKstTime, formatRemainingUntilCutoff, kstDateKey } from "@/lib/time";
 import { daysUntil } from "@/lib/business";
+import { getSubmissionUrlError } from "@/lib/url";
 import type { AppData, CalendarDay, DailyStatus, Submission } from "@/lib/types";
 import { MissionCard, ReminderCard, WeekRecord } from "./habit-cards";
 import { ParticipantDirectory } from "./participant-directory";
@@ -115,6 +116,8 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   const [remaining, setRemaining] = useState<string | null>(null);
   const [reminderSet, setReminderSet] = useState(true);
   const [editing, setEditing] = useState<Submission | null>(null);
+  const [submissionUrlError, setSubmissionUrlError] = useState<string | null>(null);
+  const [editUrlError, setEditUrlError] = useState<string | null>(null);
 
   useEffect(() => {
     const update = () => setRemaining(formatRemainingUntilCutoff(new Date()));
@@ -191,6 +194,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
 
   const chooseParticipant = (id: string) => {
     setReceipt(null);
+    setSubmissionUrlError(null);
     window.localStorage.setItem("aicrew_participant_id", id);
     setParticipantId(id);
     setTab("home");
@@ -228,6 +232,12 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
     event.preventDefault();
     const form = event.currentTarget;
     const formData = new FormData(form);
+    const urlError = getSubmissionUrlError(String(formData.get("url") ?? ""));
+    setSubmissionUrlError(urlError);
+    if (urlError) {
+      form.querySelector<HTMLInputElement>('input[name="url"]')?.focus();
+      return;
+    }
     setBusy(true);
     setToast("");
     try {
@@ -267,6 +277,12 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
     event.preventDefault();
     if (!editing) return;
     const formData = new FormData(event.currentTarget);
+    const urlError = getSubmissionUrlError(String(formData.get("url") ?? ""));
+    setEditUrlError(urlError);
+    if (urlError) {
+      event.currentTarget.querySelector<HTMLInputElement>('input[name="url"]')?.focus();
+      return;
+    }
     setBusy(true);
     try {
       const response = await fetch(`/api/submissions/${editing.id}`, {
@@ -470,7 +486,9 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                 {receipt && <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status"><strong>{receipt.onTime ? "오늘 숙제 인정 완료" : "링크 공유 완료 · 오늘 숙제 인정에는 미반영"}</strong><a className="mt-2 block break-all text-sm text-blue-700 underline" href={receipt.url} target="_blank" rel="noopener noreferrer">등록한 링크 확인</a><p className="mt-2 text-xs text-slate-600">공유 탭에서 등록 내용을 확인할 수 있어요. 수정·삭제는 등록 당일 23:00까지 가능합니다.</p><button className="secondary-button mt-3" type="button" onClick={() => setTab("home")}>내 현황 보기<ArrowRight size={17} /></button></div>}
                 <form className="grid gap-5" onSubmit={onSubmit}>
                   <Field label="AI 활용 링크" required>
-                    <input className="form-input" name="url" type="url" required maxLength={2048} placeholder="AI에서 공유 링크를 복사해 붙여넣으세요" />
+                    <input className="form-input" name="url" type="url" required maxLength={2048} placeholder="https://chatgpt.com/share/..." aria-invalid={Boolean(submissionUrlError)} aria-describedby={submissionUrlError ? "submission-url-help submission-url-error" : "submission-url-help"} onChange={() => setSubmissionUrlError(null)} />
+                    <ShareLinkHelp id="submission-url-help" />
+                    {submissionUrlError && <span id="submission-url-error" role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-normal leading-6 text-amber-950">{submissionUrlError}<span className="mt-1 block">입력한 내용은 그대로 있어요. 링크만 바꾼 뒤 다시 등록해주세요.</span></span>}
                   </Field>
                   <Field label="제목" hint="선택사항">
                     <input className="form-input" name="title" maxLength={120} placeholder="예: 회의자료 AI로 요약하기" />
@@ -559,7 +577,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     </a>
                     {submission.participantId === participantId && canParticipantEdit(submission.submittedAt, data.now) && (
                       <div className="mt-4 flex gap-2 border-t border-slate-100 pt-3">
-                        <button className="small-action" type="button" onClick={() => setEditing(submission)}><Pencil size={15} /> 수정·삭제</button>
+                        <button className="small-action" type="button" onClick={() => { setEditUrlError(null); setEditing(submission); }}><Pencil size={15} /> 수정·삭제</button>
                         <span className="ml-auto self-center text-xs font-semibold text-slate-400">오늘 등록한 글만 가능</span>
                       </div>
                     )}
@@ -665,7 +683,9 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
             <h2 className="mt-1 text-xl font-black" id="submission-edit-title">등록한 링크 수정</h2>
             <form className="mt-5 grid gap-4" onSubmit={saveEdit}>
               <Field label="AI 활용 링크" required>
-                <input className="form-input" name="url" type="url" required maxLength={2048} defaultValue={editing.url} />
+                <input className="form-input" name="url" type="url" required maxLength={2048} defaultValue={editing.url} aria-invalid={Boolean(editUrlError)} aria-describedby={editUrlError ? "edit-url-help edit-url-error" : "edit-url-help"} onChange={() => setEditUrlError(null)} />
+                <ShareLinkHelp id="edit-url-help" />
+                {editUrlError && <span id="edit-url-error" role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-normal leading-6 text-amber-950">{editUrlError}<span className="mt-1 block">입력한 내용은 그대로 있어요. 링크만 바꾼 뒤 다시 저장해주세요.</span></span>}
               </Field>
               <Field label="제목" hint="선택사항">
                 <input className="form-input" name="title" maxLength={120} defaultValue={editing.title ?? ""} />
@@ -775,6 +795,17 @@ function GrowthMetric({ label, value, detail, icon }: { label: string; value: st
 
 function CrewMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
   return <article className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4"><p className="text-xs font-bold text-emerald-700">{label}</p><p className="mt-1 text-xl font-black text-slate-900">{value}</p><p className="mt-1 text-xs font-semibold text-slate-500">{detail}</p></article>;
+}
+
+function ShareLinkHelp({ id }: { id: string }) {
+  return (
+    <span id={id} className="rounded-xl bg-blue-50 p-3 text-xs font-normal leading-5 text-slate-600">
+      <strong className="block text-blue-950">함께 볼 수 있는 공유 링크를 남겨주세요</strong>
+      <span className="mt-1 block">주소창에서 복사한 대화 주소는 다른 사람이 열지 못할 수 있어요. 주소에 /share/가 포함된 공유 링크만 등록할 수 있어요.</span>
+      <span className="mt-1 block font-semibold">AI 대화 열기 → 공유 → 링크 복사 → 여기에 붙여넣기</span>
+      <span className="mt-1 block">공유 링크를 만들기 어렵거나 계속 등록되지 않으면 운영진에게 문의해주세요.</span>
+    </span>
+  );
 }
 
 function Field({ label, hint, required, children }: { label: string; hint?: string; required?: boolean; children: React.ReactNode }) {

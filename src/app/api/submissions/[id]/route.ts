@@ -1,6 +1,6 @@
 import { verifyPassword } from "@/server/password-service";
 import { canParticipantEdit } from "@/lib/time";
-import { normalizeUrl } from "@/lib/url";
+import { getSubmissionUrlError, normalizeUrl } from "@/lib/url";
 import { getSupabaseAdmin, isDemoMode } from "@/server/supabase";
 import type { Database } from "@/server/database.types";
 import { z } from "zod";
@@ -38,6 +38,10 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   const { id } = await context.params;
   const parsed = mutationSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return Response.json({ error: "입력값을 확인해주세요." }, { status: 400 });
+  if (parsed.data.url !== undefined) {
+    const urlError = getSubmissionUrlError(parsed.data.url);
+    if (urlError) return Response.json({ error: urlError }, { status: 400 });
+  }
   if (isDemoMode()) return Response.json({ success: true });
   try {
     const verified = await loadAndVerify(id, parsed.data.participantId, parsed.data.password);
