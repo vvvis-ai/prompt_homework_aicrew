@@ -1,5 +1,6 @@
 import { hashPassword } from "@/server/password-service";
-import { isSubmissionOnTime } from "@/lib/time";
+import { isSubmissionOnTime, kstDateKey } from "@/lib/time";
+import { isVoluntarySharingChallenge } from "@/lib/participation";
 import { getSubmissionUrlError, normalizeUrl } from "@/lib/url";
 import { getSupabaseAdmin, isDemoMode } from "@/server/supabase";
 import { z } from "zod";
@@ -41,22 +42,20 @@ export async function POST(request: Request) {
   }
   try {
     const db = getSupabaseAdmin();
-    const { data: challenge } = await db.from("challenges").select("id,start_date,end_date").eq("is_active", true).maybeSingle();
-    if (!challenge) return Response.json({ error: "현재 진행 중인 기수가 없습니다." }, { status: 409 });
-    const { data: participant } = await db
+    const { data: participant, error: participantError } = await db
       .from("participants")
       .select("id,challenge_id,is_active,joined_at,left_at")
       .eq("id", Number(parsed.data.participantId))
-      .eq("challenge_id", challenge.id)
       .maybeSingle();
-    if (!participant?.is_active) return Response.json({ error: "유효한 참가자가 아닙니다." }, { status: 403 });
-    const today = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Seoul",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(now);
-    if (today < challenge.start_date || today > challenge.end_date || today < participant.joined_at || (participant.left_at && today > participant.left_at)) {
+    if (participantError) throw participantError;
+    if (!participant) return Response.json({ error: "유효한 참가자가 아닙니다." }, { status: 403 });
+    const { data: challenge, error: challengeError } = await db.from("challenges")
+      .select("id,start_date,end_date,is_active").eq("id", participant.challenge_id).maybeSingle();
+    if (challengeError) throw challengeError;
+    if (!challenge) return Response.json({ error: "기수를 찾을 수 없습니다." }, { status: 403 });
+    const today = kstDateKey(now);
+    const sharingOnly = isVoluntarySharingChallenge(challenge, today);
+    if (!sharingOnly && (!challenge.is_active || !participant.is_active || today < challenge.start_date || today > challenge.end_date || today < participant.joined_at || (participant.left_at && today >= participant.left_at))) {
       return Response.json({ error: "현재 이 기수에 참여 중인 참가자가 아닙니다." }, { status: 403 });
     }
     const passwordHash = await hashPassword(parsed.data.password);
@@ -79,7 +78,8 @@ export async function POST(request: Request) {
     if (error) throw error;
     return Response.json({
       success: true,
-      onTime: isSubmissionOnTime(data.submitted_at),
+      sharingOnly,
+      onTime: !sharingOnly && isSubmissionOnTime(data.submitted_at),
       submission: { id: String(data.id), submittedAt: data.submitted_at, normalizedUrl },
     });
   } catch (error) {

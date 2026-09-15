@@ -44,6 +44,7 @@ export type CalendarDay = {
 };
 
 export type AppData = {
+  sharingOnly: boolean;
   participantGroups: ParticipantGroup[];
   habit: { week: import("./habits").HabitDay[]; recentMisses: number };
   demo: boolean;

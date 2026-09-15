@@ -32,6 +32,7 @@ import { getSubmissionUrlError } from "@/lib/url";
 import type { AppData, CalendarDay, DailyStatus, Submission } from "@/lib/types";
 import { MissionCard, ReminderCard, WeekRecord } from "./habit-cards";
 import { ParticipantDirectory } from "./participant-directory";
+import { ShareLinkHelp } from "./share-link-help";
 
 type Tab = "home" | "submit" | "feed" | "growth";
 
@@ -260,7 +261,8 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
     form.reset();
     setReceipt({ onTime: Boolean(result.onTime), url: String(formData.get("url")) });
     setToast(
-      result.onTime
+      data.sharingOnly ? "✅ 프롬프트를 공유했습니다."
+        : result.onTime
         ? "✅ 오늘 숙제를 완료했습니다."
         : "✅ 링크가 등록되었습니다. 마감시간 이후 등록되어 오늘 숙제 완료에는 반영되지 않습니다.",
     );
@@ -417,6 +419,13 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     </div>
                   </article>
                 )}
+                {data.sharingOnly ? <section className="surface-card">
+                  <p className="text-sm font-bold text-blue-700">자율 공유</p>
+                  <h1 className="mt-2 text-2xl font-black">{selectedParticipant?.name}님의 프롬프트를 나눠주세요</h1>
+                  <p className="mt-3 leading-7 text-slate-600">원하는 날 자유롭게 공유해주세요. 챌린지 참여 의무와 미등록에 따른 금액 차감은 없습니다.</p>
+                  <p className="mt-3 font-bold">이번 달 공유한 링크 {data.summary.totalLinks}개</p>
+                  <button className="primary-button mt-4" type="button" onClick={() => setTab("submit")}>프롬프트 공유하기 <ArrowRight size={19} /></button>
+                </section> : <>
                 <section className={`status-card ${status.tone}`}>
                   <span className="text-4xl" aria-hidden="true">{status.icon}</span>
                   <div className="min-w-0 flex-1">
@@ -439,6 +448,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                   <StatCard label="등록 링크" value={data.summary.totalLinks} suffix="개" icon={<Link2 size={19} />} />
                   <StatCard label="현재 스트릭" value={data.summary.streak} suffix="일" icon={<Flame size={19} />} />
                 </div>
+                </>}
                 <section className="surface-card">
                   <div className="flex items-center justify-between gap-3">
                     <button className="icon-button" type="button" aria-label="이전 달" onClick={() => setMonth(shiftMonth(month, -1))}><ChevronLeft size={20} /></button>
@@ -457,18 +467,18 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                         key={day.date}
                         type="button"
                         onClick={() => setSelectedDay(day)}
-                        aria-label={`${displayDate(day.date)} ${statusLabel[day.status]}`}
+                        aria-label={`${displayDate(day.date)} ${data.sharingOnly ? `공유 링크 ${day.submissions.length}개` : statusLabel[day.status]}`}
                       >
                         <span>{day.day}</span>
-                        <strong>{statusMark[day.status]}</strong>
+                        <strong>{data.sharingOnly ? (day.submissions.length > 0 ? "🔗" : "—") : statusMark[day.status]}</strong>
                       </button>
                     ))}
                   </div>
                   <div className="mt-5 flex flex-wrap gap-x-4 gap-y-2 text-sm font-semibold text-slate-600">
-                    <span>✅ 완료</span><span>❌ 미제출</span><span>🟦 면제</span><span className="text-slate-400">회색 비대상일</span>
+                    {data.sharingOnly ? <span>🔗 프롬프트 공유한 날</span> : <><span>✅ 완료</span><span>❌ 미제출</span><span>🟦 면제</span><span className="text-slate-400">회색 비대상일</span></>}
                   </div>
                 </section>
-                {!promoteReminder && <ReminderCard key={participantId} participantId={participantId} demo={data.demo} />}
+                {!data.sharingOnly && !promoteReminder && <ReminderCard key={participantId} participantId={participantId} demo={data.demo} />}
               </div>
             )}
 
@@ -479,17 +489,17 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     <p className="text-sm font-bold text-blue-700">{displayDate(kstDateKey(data.now))} · {selectedParticipant?.name}</p>
                     <h1 className="mt-1 text-2xl font-black">오늘 써본 AI, 링크로 남겨요</h1>
                     <p className="mt-2 text-sm leading-6 text-slate-600">짧은 질문도, 기대와 달랐던 답도 괜찮아요. 직접 써봤다면 충분해요.</p>
-                    <p className="mt-2 text-sm font-semibold text-slate-500">오늘 숙제 제출 마감 23:00</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-500">{data.sharingOnly ? "자율 공유 · 미등록 차감 없음" : "오늘 숙제 제출 마감 23:00"}</p>
                   </div>
                   <span className="grid size-12 place-items-center rounded-2xl bg-lime-100 text-lime-800"><Plus size={25} /></span>
                 </div>
-                {receipt && <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status"><strong>{receipt.onTime ? "오늘 숙제 인정 완료" : "링크 공유 완료 · 오늘 숙제 인정에는 미반영"}</strong><a className="mt-2 block break-all text-sm text-blue-700 underline" href={receipt.url} target="_blank" rel="noopener noreferrer">등록한 링크 확인</a><p className="mt-2 text-xs text-slate-600">공유 탭에서 등록 내용을 확인할 수 있어요. 수정·삭제는 등록 당일 23:00까지 가능합니다.</p><button className="secondary-button mt-3" type="button" onClick={() => setTab("home")}>내 현황 보기<ArrowRight size={17} /></button></div>}
+                {receipt && <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status"><strong>{data.sharingOnly ? "프롬프트 공유 완료" : receipt.onTime ? "오늘 숙제 인정 완료" : "링크 공유 완료 · 오늘 숙제 인정에는 미반영"}</strong><a className="mt-2 block break-all text-sm text-blue-700 underline" href={receipt.url} target="_blank" rel="noopener noreferrer">등록한 링크 확인</a><p className="mt-2 text-xs text-slate-600">공유 탭에서 등록 내용을 확인할 수 있어요. 수정·삭제는 등록 당일 23:00까지 가능합니다.</p><button className="secondary-button mt-3" type="button" onClick={() => setTab("home")}>내 현황 보기<ArrowRight size={17} /></button></div>}
                 <form className="grid gap-5" onSubmit={onSubmit}>
-                  <Field label="AI 활용 링크" required>
-                    <input className="form-input" name="url" type="url" required maxLength={2048} placeholder="https://chatgpt.com/share/..." aria-invalid={Boolean(submissionUrlError)} aria-describedby={submissionUrlError ? "submission-url-help submission-url-error" : "submission-url-help"} onChange={() => setSubmissionUrlError(null)} />
-                    <ShareLinkHelp id="submission-url-help" />
-                    {submissionUrlError && <span id="submission-url-error" role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-normal leading-6 text-amber-950">{submissionUrlError}<span className="mt-1 block">입력한 내용은 그대로 있어요. 링크만 바꾼 뒤 다시 등록해주세요.</span></span>}
-                  </Field>
+                  <div className="grid gap-2">
+                    <label htmlFor="submission-url" className="font-extrabold">AI 활용 링크 <span className="text-red-500">*</span></label>
+                    <input id="submission-url" className="form-input" name="url" type="url" required maxLength={2048} placeholder="https://chatgpt.com/share/..." aria-invalid={Boolean(submissionUrlError)} aria-describedby={submissionUrlError ? "submission-url-help submission-url-error" : "submission-url-help"} onChange={() => setSubmissionUrlError(null)} />
+                    <ShareLinkHelp id="submission-url-help" errorId="submission-url-error" error={submissionUrlError} />
+                  </div>
                   <Field label="제목" hint="선택사항">
                     <input className="form-input" name="title" maxLength={120} placeholder="예: 회의자료 AI로 요약하기" />
                   </Field>
@@ -500,8 +510,8 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     <input className="form-input" name="password" type="password" required minLength={4} maxLength={72} autoComplete="new-password" placeholder="4자 이상" />
                   </Field>
                   <div className="rounded-2xl bg-blue-50 px-4 py-3 text-sm font-semibold leading-6 text-blue-950">
-                    <p>※ 숙제 제출 인정 마감은 23:00입니다.</p>
-                    <p>※ 수정·삭제도 숙제 제출과 동일하게 등록 당일 23:00까지 가능합니다.</p>
+                    <p>{data.sharingOnly ? "※ 자율 공유는 시간에 관계없이 등록할 수 있고, 미등록 차감이 없습니다." : "※ 숙제 제출 인정 마감은 23:00입니다."}</p>
+                    <p>※ 수정·삭제는 등록 당일 23:00까지 가능합니다.</p>
                   </div>
                   <button className="primary-button" disabled={busy} type="submit">{busy ? "등록 중..." : "링크 등록하기"} <ArrowRight size={19} /></button>
                 </form>
@@ -601,6 +611,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     <p className="text-sm font-bold text-blue-700">비교 없는 개인 기록</p>
                     <h2 className="mt-1 text-xl font-black">{selectedParticipant?.name}님의 성장</h2>
                   </div>
+                  {data.sharingOnly ? <p className="mt-5 leading-7 text-slate-600">이번 달 {data.summary.totalLinks}개의 프롬프트를 공유했어요. 자율 공유는 제출률이나 미제출을 집계하지 않습니다.</p> : <>
                   <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
                     <GrowthMetric label="이번 달 제출률" value={completionRate === null ? "집계 전" : `${completionRate}%`} detail="확정 대상일 기준" icon={<CheckCircle2 size={19} />} />
                     <GrowthMetric label="완료한 날" value={`${data.summary.completedDays}일`} detail="이번 달 기록" icon={<CalendarDays size={19} />} />
@@ -618,6 +629,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                             ? `지난달보다 제출률이 ${Math.abs(rateChange)}%p 낮지만, 오늘의 한 번부터 다시 쌓을 수 있어요.`
                             : "지난달과 같은 제출률을 유지하고 있어요. 꾸준함이 쌓이고 있습니다."}
                   </div>
+                  </>}
                 </section>
                 <section className="surface-card">
                   <div className="flex flex-wrap items-end justify-between gap-3">
@@ -660,7 +672,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
             <button className="absolute right-4 top-4 rounded-full p-2 hover:bg-slate-100" type="button" aria-label="닫기" onClick={() => setSelectedDay(null)}><X size={20} /></button>
             <p className="text-sm font-bold text-blue-700">{displayDate(selectedDay.date)}</p>
             <h2 className="mt-1 text-xl font-black">등록한 링크</h2>
-            <p className="mt-2 text-sm font-semibold text-slate-500">상태: {statusContent[selectedDay.status].title}</p>
+            <p className="mt-2 text-sm font-semibold text-slate-500">{data.sharingOnly ? "자율 공유 기록" : `상태: ${statusContent[selectedDay.status].title}`}</p>
             <div className="mt-5 grid gap-3">
               {selectedDay.submissions.length === 0 && <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">이날 등록한 링크가 없습니다.</p>}
               {selectedDay.submissions.map((submission) => (
@@ -682,11 +694,11 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
             <p className="text-sm font-bold text-blue-700">{displayDate(kstDateKey(editing.submittedAt))} 등록</p>
             <h2 className="mt-1 text-xl font-black" id="submission-edit-title">등록한 링크 수정</h2>
             <form className="mt-5 grid gap-4" onSubmit={saveEdit}>
-              <Field label="AI 활용 링크" required>
-                <input className="form-input" name="url" type="url" required maxLength={2048} defaultValue={editing.url} aria-invalid={Boolean(editUrlError)} aria-describedby={editUrlError ? "edit-url-help edit-url-error" : "edit-url-help"} onChange={() => setEditUrlError(null)} />
-                <ShareLinkHelp id="edit-url-help" />
-                {editUrlError && <span id="edit-url-error" role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-normal leading-6 text-amber-950">{editUrlError}<span className="mt-1 block">입력한 내용은 그대로 있어요. 링크만 바꾼 뒤 다시 저장해주세요.</span></span>}
-              </Field>
+              <div className="grid gap-2">
+                <label htmlFor="edit-url" className="font-extrabold">AI 활용 링크 <span className="text-red-500">*</span></label>
+                <input id="edit-url" className="form-input" name="url" type="url" required maxLength={2048} defaultValue={editing.url} aria-invalid={Boolean(editUrlError)} aria-describedby={editUrlError ? "edit-url-help edit-url-error" : "edit-url-help"} onChange={() => setEditUrlError(null)} />
+                <ShareLinkHelp id="edit-url-help" errorId="edit-url-error" error={editUrlError} />
+              </div>
               <Field label="제목" hint="선택사항">
                 <input className="form-input" name="title" maxLength={120} defaultValue={editing.title ?? ""} />
               </Field>
@@ -758,6 +770,14 @@ function BrandHeader({ demo, participantName, onChangeParticipant }: { demo: boo
 }
 
 function ChallengeCard({ data, progress, compact = false }: { data: AppData; progress: number; compact?: boolean }) {
+  if (data.sharingOnly) {
+    const group = data.participantGroups.find((item) => item.members.some((member) => member.id === data.selectedParticipant?.id));
+    return <section className={`challenge-card ${compact ? "p-5" : ""}`}>
+      <p className="text-sm font-semibold text-blue-100">AI 러닝크루</p>
+      <h2 className="mt-2 text-2xl font-extrabold">{group?.name} 자율 공유</h2>
+      <p className="mt-2 text-sm text-blue-100">원하는 날 자유롭게 · 미등록 차감 없음</p>
+    </section>;
+  }
   return (
     <section className={`challenge-card ${compact ? "p-5" : ""}`}>
       <p className="text-sm font-semibold text-blue-100">현재 챌린지</p>
@@ -795,17 +815,6 @@ function GrowthMetric({ label, value, detail, icon }: { label: string; value: st
 
 function CrewMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
   return <article className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4"><p className="text-xs font-bold text-emerald-700">{label}</p><p className="mt-1 text-xl font-black text-slate-900">{value}</p><p className="mt-1 text-xs font-semibold text-slate-500">{detail}</p></article>;
-}
-
-function ShareLinkHelp({ id }: { id: string }) {
-  return (
-    <span id={id} className="rounded-xl bg-blue-50 p-3 text-xs font-normal leading-5 text-slate-600">
-      <strong className="block text-blue-950">함께 볼 수 있는 공유 링크를 남겨주세요</strong>
-      <span className="mt-1 block">주소창에서 복사한 대화 주소는 다른 사람이 열지 못할 수 있어요. 주소에 /share/가 포함된 공유 링크만 등록할 수 있어요.</span>
-      <span className="mt-1 block font-semibold">AI 대화 열기 → 공유 → 링크 복사 → 여기에 붙여넣기</span>
-      <span className="mt-1 block">공유 링크를 만들기 어렵거나 계속 등록되지 않으면 운영진에게 문의해주세요.</span>
-    </span>
-  );
 }
 
 function Field({ label, hint, required, children }: { label: string; hint?: string; required?: boolean; children: React.ReactNode }) {

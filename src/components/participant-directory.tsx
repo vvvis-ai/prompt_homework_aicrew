@@ -17,7 +17,7 @@ export function ParticipantDirectory({ groups, onChoose }: {
         <span className="grid size-11 place-items-center rounded-2xl bg-blue-100 text-blue-700"><UserRound size={23} aria-hidden="true" /></span>
         <div>
           <p className="text-sm font-semibold text-slate-500">AI 러닝크루 멤버</p>
-          <h2 className="text-xl font-extrabold">{selected?.isActive ? "내 이름을 선택해주세요" : `${selected?.name ?? "이전 기수"} 멤버`}</h2>
+          <h2 className="text-xl font-extrabold">내 이름을 선택해주세요</h2>
         </div>
       </div>
       <div className="mt-5 flex gap-2" role="tablist" aria-label="참가 기수">
@@ -43,7 +43,7 @@ export function ParticipantDirectory({ groups, onChoose }: {
         ))}
       </div>
       {selected && <div id={`crew-panel-${selected.id}`} role="tabpanel" aria-labelledby={`crew-tab-${selected.id}`} className="mt-4">
-        {!selected.isActive && <p className="mb-4 text-sm text-slate-500">함께했던 {selected.name} 멤버들이에요.</p>}
+        {!selected.isActive && <p className="mb-4 text-sm text-slate-500">{selected.name}도 이름을 선택해 프롬프트를 자율적으로 공유할 수 있어요. 미등록에 따른 금액 차감은 없습니다.</p>}
         <ul className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3">
           {selected.members.map((person) => {
             const content = <>

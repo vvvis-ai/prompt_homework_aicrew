@@ -1,5 +1,6 @@
 import "server-only";
 import { groupParticipants } from "@/lib/participant-groups";
+import { isVoluntarySharingChallenge } from "@/lib/participation";
 import { recentMisses, weekDates } from "@/lib/habits";
 
 import {
@@ -104,18 +105,18 @@ function buildData(
   noticeRows: NoticeRow[],
   demo: boolean,
   penaltyRates: Array<{ effective_from: string; amount: number }> = [],
+  sharingParticipants: ParticipantRow[] = [],
 ): AppData {
   const today = kstDateKey(now);
   const month = query.month ?? today.slice(0, 7);
   const feedDate = query.date ?? today;
   const challenge = toChallenge(challengeRow);
-  const participants = participantRows
-    .filter((participant) => participant.is_active)
-    .map(toParticipant);
+  const participants = [...participantRows.filter((participant) => participant.is_active), ...sharingParticipants].map(toParticipant);
   const selectedParticipant =
     participants.find((participant) => participant.id === query.participantId) ?? null;
+  const sharingOnly = sharingParticipants.some((participant) => String(participant.id) === selectedParticipant?.id);
   const participantName = new Map(
-    participantRows.map((participant) => [String(participant.id), participant.name]),
+    [...participantRows, ...sharingParticipants].map((participant) => [String(participant.id), participant.name]),
   );
   const submissions: Submission[] = submissionRows.map((submission) => ({
     id: String(submission.id),
@@ -152,7 +153,7 @@ function buildData(
         return {
           date,
           day: Number(date.slice(-2)),
-          status: evaluateDailyStatus({
+          status: sharingOnly ? (date > today ? "future" as const : "not_enrolled" as const) : evaluateDailyStatus({
             dateKey: date,
             now,
             joinedAt: selectedParticipant.joinedAt,
@@ -200,8 +201,9 @@ function buildData(
   const crewParticipantCount = participantGrowth.filter((entry) =>
     entry.monthlyStatuses.some((item) => item.status !== "not_enrolled" && item.status !== "future"),
   ).length;
+  const challengeParticipantIds = new Set(participantRows.map((row) => String(row.id)));
   const crewTotalLinks = submissions.filter((submission) =>
-    kstDateKey(submission.submittedAt).startsWith(month),
+    challengeParticipantIds.has(submission.participantId) && kstDateKey(submission.submittedAt).startsWith(month),
   ).length;
 
   const normalizedSearch = query.search?.trim().toLocaleLowerCase("ko") ?? "";
@@ -217,7 +219,7 @@ function buildData(
     )
     .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
 
-  const todayStatus = selectedParticipant
+  const todayStatus = selectedParticipant && !sharingOnly
     ? evaluateDailyStatus({
         dateKey: today,
         now,
@@ -237,6 +239,7 @@ function buildData(
     .map((item) => item.status) ?? [];
 
   return {
+    sharingOnly,
     demo,
     participantGroups: groupParticipants(
       [{ ...challengeRow, is_active: true }],
@@ -248,7 +251,7 @@ function buildData(
     },
     now: now.toISOString(),
     challenge,
-    penaltyNotice: {
+    penaltyNotice: sharingOnly ? null : {
       phase: penaltyPhaseFor(today, challenge.penaltyStartDate),
       startDate: challenge.penaltyStartDate,
       daysUntilStart: daysUntil(today, challenge.penaltyStartDate),
@@ -386,12 +389,16 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
       rows.notices,
       true,
       [{ effective_from: rows.challenge.start_date, amount: 2000 }],
+      [
+        { id: 4, name: "이서연", joined_at: "2026-01-07", left_at: null, is_active: false },
+        { id: 5, name: "정민수", joined_at: "2026-01-07", left_at: null, is_active: false },
+      ],
     );
     data.participantGroups.push({
       id: "2", name: "1기", isActive: false,
       members: [
-        { id: "4", name: "이서연", affiliation: "", selectable: false },
-        { id: "5", name: "정민수", affiliation: "", selectable: false },
+        { id: "4", name: "이서연", affiliation: "", selectable: true },
+        { id: "5", name: "정민수", affiliation: "", selectable: true },
       ],
     });
     return data;
@@ -406,6 +413,7 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
   if (challengeError) throw challengeError;
   if (!challenge) {
     return {
+      sharingOnly: false,
       demo: false,
       habit: { week: [], recentMisses: 0 },
       now: now.toISOString(),
@@ -440,10 +448,19 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
     };
   }
   const challengeId = challenge.id;
+  const [{ data: rosterChallenges, error: rosterChallengeError }, { data: rosterMembers, error: rosterMemberError }] = await Promise.all([
+    db.from("challenges").select("id,name,is_active,start_date,end_date").lte("start_date", kstDateKey(now)),
+    db.from("participants").select("id,challenge_id,name,affiliation,is_active,joined_at,left_at").order("name"),
+  ]);
+  if (rosterChallengeError) throw rosterChallengeError;
+  if (rosterMemberError) throw rosterMemberError;
+  const sharingChallengeIds = (rosterChallenges ?? [])
+    .filter((row) => isVoluntarySharingChallenge(row, kstDateKey(now))).map((row) => row.id);
+  const sharingParticipants = (rosterMembers ?? []).filter((row) => sharingChallengeIds.includes(row.challenge_id));
   const [{ data: participants, error: participantsError }, { data: submissions, error: submissionsError }, { data: exemptions, error: exemptionsError }, { data: excluded, error: excludedError }, { data: notices, error: noticesError }] =
     await Promise.all([
       db.from("participants").select("id,name,affiliation,joined_at,left_at,is_active").eq("challenge_id", challengeId).order("name"),
-      db.from("submissions").select("id,participant_id,title,url,description,submitted_at,is_featured").eq("challenge_id", challengeId).gte("submitted_at", new Date(`${challenge.start_date}T00:00:00+09:00`).toISOString()).order("submitted_at", { ascending: false }),
+      db.from("submissions").select("id,participant_id,title,url,description,submitted_at,is_featured").in("challenge_id", [challengeId, ...sharingChallengeIds]).gte("submitted_at", new Date(`${challenge.start_date}T00:00:00+09:00`).toISOString()).order("submitted_at", { ascending: false }),
       db.from("exemptions").select("participant_id,exemption_date").eq("challenge_id", challengeId),
       db.from("excluded_dates").select("excluded_date").eq("challenge_id", challengeId),
       db.from("notices").select("id,title,content,is_pinned,created_at").eq("challenge_id", challengeId).order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
@@ -456,12 +473,6 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
     .eq("challenge_id", challengeId)
     .order("effective_from");
   if (penaltyRateError) throw penaltyRateError;
-  const [{ data: rosterChallenges, error: rosterChallengeError }, { data: rosterMembers, error: rosterMemberError }] = await Promise.all([
-    db.from("challenges").select("id,name,is_active,start_date").lte("start_date", kstDateKey(now)),
-    db.from("participants").select("id,challenge_id,name,affiliation,is_active").order("name"),
-  ]);
-  if (rosterChallengeError) throw rosterChallengeError;
-  if (rosterMemberError) throw rosterMemberError;
   const data = buildData(
     query,
     now,
@@ -473,6 +484,7 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
     (notices ?? []) as NoticeRow[],
     false,
     (penaltyRates ?? []) as Array<{ effective_from: string; amount: number }>,
+    sharingParticipants,
   );
   data.participantGroups = groupParticipants(rosterChallenges ?? [], rosterMembers ?? []);
   return data;
