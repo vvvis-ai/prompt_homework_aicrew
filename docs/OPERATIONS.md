@@ -33,6 +33,16 @@ ADMIN_SESSION_SECRET
 
 ## 4. Cloudflare Workers 배포
 
+비밀번호 해시 생성·검증은 기존 Supabase 프로젝트의 `password-crypto` Edge Function에서 처리합니다. Workers 무료 요금제의 요청당 CPU 한도 안에서 bcrypt/PBKDF2를 실행하지 않기 위한 분리입니다. 관리자 PBKDF2/bcrypt 해시와 기존 게시물의 bcrypt 해시는 그대로 사용하며, 비밀번호를 다시 설정할 필요가 없습니다.
+
+앱보다 함수를 먼저 배포합니다. `verify_jwt = false`는 새 Supabase secret key가 JWT가 아니기 때문이며, 함수의 `withSupabase({ auth: "secret" })`가 서버의 `apikey`를 검증합니다. 이 인증 검사를 제거하거나 브라우저에서 함수를 직접 호출하면 안 됩니다. 요청 본문과 비밀번호·해시는 로그에 기록하지 않습니다. 함수 장애 시에는 로그인·등록을 실패 처리하며 Workers에서 고비용 연산을 재시도하지 않습니다.
+
+```bash
+npx supabase functions deploy password-crypto --use-api
+```
+
+함수와 앱은 기존 `SUPABASE_URL`, `SUPABASE_SECRET_KEY`를 사용합니다. 함수 의존성 버전은 `supabase/functions/password-crypto/deno.json`에서 관리합니다. 함수는 Deno 런타임에서 실행하므로 Next.js 타입 검사 대상에서 제외하며, 핵심 계산은 Vitest 및 실제 함수 호출로 검증합니다.
+
 ```bash
 npx wrangler login
 npx wrangler secret put SUPABASE_URL
@@ -48,6 +58,8 @@ npm run build:vinext
 npm run deploy:dry-run
 npm run deploy
 ```
+
+로그인/링크 등록 장애가 재발하면 `wrangler tail`에서 `Exceeded CPU Limit` 여부를 확인하고, Supabase 함수 상태도 확인합니다. 실제 오류가 발생한 단계와 저장 성공 여부를 구분하세요. 링크 저장 후 제출 현황 조회만 실패한 경우에는 재등록을 유도하지 않습니다.
 
 배포 전에 먼저 Supabase DB 마이그레이션을 적용합니다. 배포가 끝난 뒤 참가자 화면, `/admin` 로그인, 제출 등록/수정/삭제, 관리자 정산 파일 다운로드를 확인합니다. 앱은 Cloudflare Workers에서 실행되고 데이터는 기존 Supabase에 계속 저장됩니다.
 

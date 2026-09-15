@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@supabase/server": "npm:@supabase/server@1.6.0",
+    "bcryptjs": "npm:bcryptjs@3.0.3"
+  }
+}

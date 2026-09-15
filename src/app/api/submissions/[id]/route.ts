@@ -1,4 +1,4 @@
-import { compare } from "bcryptjs";
+import { verifyPassword } from "@/server/password-service";
 import { canParticipantEdit } from "@/lib/time";
 import { normalizeUrl } from "@/lib/url";
 import { getSupabaseAdmin, isDemoMode } from "@/server/supabase";
@@ -28,7 +28,7 @@ async function loadAndVerify(id: string, participantId: string, password: string
   if (!canParticipantEdit(data.submitted_at)) {
     return { error: "수정·삭제 가능 시간이 지났습니다. 제출 당일 23:00까지만 가능합니다.", status: 403 } as const;
   }
-  if (!(await compare(password, data.edit_password_hash))) {
+  if (!(await verifyPassword(password, data.edit_password_hash))) {
     return { error: "수정·삭제 비밀번호가 일치하지 않습니다.", status: 403 } as const;
   }
   return { data, db } as const;

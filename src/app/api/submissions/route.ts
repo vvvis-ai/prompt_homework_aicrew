@@ -1,4 +1,4 @@
-import { hash } from "bcryptjs";
+import { hashPassword } from "@/server/password-service";
 import { isSubmissionOnTime } from "@/lib/time";
 import { normalizeUrl } from "@/lib/url";
 import { getSupabaseAdmin, isDemoMode } from "@/server/supabase";
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     if (today < challenge.start_date || today > challenge.end_date || today < participant.joined_at || (participant.left_at && today > participant.left_at)) {
       return Response.json({ error: "현재 이 기수에 참여 중인 참가자가 아닙니다." }, { status: 403 });
     }
-    const passwordHash = await hash(parsed.data.password, 12);
+    const passwordHash = await hashPassword(parsed.data.password);
     const { data, error } = await db
       .from("submissions")
       .insert({

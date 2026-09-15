@@ -1,11 +1,11 @@
 import "server-only";
 
 import { timingSafeEqual } from "node:crypto";
-import { compare } from "bcryptjs";
 import { jwtVerify, SignJWT } from "jose";
 import { cookies } from "next/headers";
 import type { AdminSessionView } from "@/lib/types";
-import { isDemoMode } from "@/server/supabase";
+import { isDatabaseConfigured, isDemoMode } from "@/server/supabase";
+import { verifyPassword } from "@/server/password-service";
 
 export const ADMIN_COOKIE = "aicrew_admin_session";
 
@@ -57,10 +57,15 @@ async function verifyPbkdf2Password(password: string, encoded: string) {
 }
 
 export async function verifyAdminPassword(password: string): Promise<boolean> {
+  const encoded = process.env.ADMIN_PASSWORD_PBKDF2 || process.env.ADMIN_PASSWORD_HASH;
+  if (encoded && isDatabaseConfigured() && !isDemoMode()) {
+    return verifyPassword(password, encoded);
+  }
   if (process.env.ADMIN_PASSWORD_PBKDF2) {
     return verifyPbkdf2Password(password, process.env.ADMIN_PASSWORD_PBKDF2);
   }
   if (process.env.ADMIN_PASSWORD_HASH) {
+    const { compare } = await import("bcryptjs");
     return compare(password, process.env.ADMIN_PASSWORD_HASH);
   }
   const expected =

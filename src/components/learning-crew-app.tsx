@@ -220,7 +220,8 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
     if (search.trim()) params.set("search", search.trim());
     const response = await fetch(`/api/app?${params}`, { cache: "no-store" });
     const result = (await response.json()) as AppData;
-    if (response.ok) setData(result);
+    if (!response.ok) throw new Error("제출 현황을 불러오지 못했습니다.");
+    setData(result);
   };
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -242,7 +243,6 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
       }),
     });
     const result = (await response.json()) as { error?: string; onTime?: boolean };
-    setBusy(false);
     if (!response.ok) {
       setToast(result.error ?? "링크를 등록하지 못했습니다.");
       return;
@@ -254,7 +254,11 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
         ? "✅ 오늘 숙제를 완료했습니다."
         : "✅ 링크가 등록되었습니다. 마감시간 이후 등록되어 오늘 숙제 완료에는 반영되지 않습니다.",
     );
-    await refresh();
+    try {
+      await refresh();
+    } catch {
+      setToast("✅ 링크가 등록되었습니다. 제출 현황을 불러오지 못했으니 잠시 후 새로고침해 주세요.");
+    }
     } catch { setToast("연결이 원활하지 않습니다. 입력 내용을 유지했어요. 제출 현황을 확인한 뒤 다시 시도해주세요."); }
     finally { setBusy(false); }
   };
