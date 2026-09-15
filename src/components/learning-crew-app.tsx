@@ -361,7 +361,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   if (!participantId || (!selectedParticipant && hydrated && !busy)) {
     return (
       <main className="min-h-screen px-5 py-6 sm:px-8 sm:py-10">
-        <div className="mx-auto flex w-full max-w-lg flex-col gap-6">
+        <div className="mx-auto flex w-full max-w-lg flex-col gap-6 md:max-w-4xl">
           <BrandHeader demo={data.demo} />
           <ChallengeCard data={data} progress={progress} />
           <ParticipantDirectory groups={data.participantGroups} onChoose={chooseParticipant} />

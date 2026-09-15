@@ -44,19 +44,19 @@ export function ParticipantDirectory({ groups, onChoose }: {
       </div>
       {selected && <div id={`crew-panel-${selected.id}`} role="tabpanel" aria-labelledby={`crew-tab-${selected.id}`} className="mt-4">
         {!selected.isActive && <p className="mb-4 text-sm text-slate-500">함께했던 {selected.name} 멤버들이에요.</p>}
-        <ul className="grid gap-3">
+        <ul className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3">
           {selected.members.map((person) => {
             const content = <>
-              <span className="avatar shrink-0" aria-hidden="true">{person.name.slice(0, 1)}</span>
+              <span className="avatar !hidden shrink-0 sm:!grid sm:!size-9" aria-hidden="true">{person.name.slice(0, 1)}</span>
               <span className="min-w-0 flex-1 text-left">
-                <span className="block font-bold">{person.name}</span>
-                {person.affiliation && <span className="mt-1 block break-words text-sm font-normal text-slate-500">{person.affiliation}</span>}
+                <span className="block break-words font-bold">{person.name}</span>
+                {person.affiliation && <span className="mt-1 block break-words text-xs font-normal text-slate-500 sm:text-sm">{person.affiliation}</span>}
               </span>
-              {person.selectable && <ArrowRight size={19} aria-hidden="true" />}
+              {person.selectable && <ArrowRight className="hidden shrink-0 sm:block" size={16} aria-hidden="true" />}
             </>;
-            return <li key={person.id}>{person.selectable
-              ? <button className="participant-button w-full" type="button" onClick={() => onChoose(person.id)}>{content}</button>
-              : <div className="flex items-center gap-3 rounded-2xl border border-slate-200 p-4">{content}</div>}
+            return <li className="min-w-0" key={person.id}>{person.selectable
+              ? <button className="participant-button h-full !gap-2 !px-3 !py-3" type="button" onClick={() => onChoose(person.id)}>{content}</button>
+              : <div className="flex h-full min-h-16 items-center gap-2 rounded-2xl border border-slate-200 p-3">{content}</div>}
             </li>;
           })}
         </ul>
