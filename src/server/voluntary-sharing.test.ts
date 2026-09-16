@@ -11,6 +11,7 @@ vi.mock("@/server/supabase", () => ({
       const result = () => ({ data: rows, error: null });
       const query = {
         select: () => query, order: () => query,
+        range: (from: number, to: number) => { rows = rows.slice(from, to + 1); return query; },
         eq: (key: string, value: unknown) => { rows = rows.filter((row) => row[key] === value); return query; },
         in: (key: string, values: unknown[]) => { rows = rows.filter((row) => values.includes(row[key])); return query; },
         lte: (key: string, value: string) => { rows = rows.filter((row) => String(row[key]) <= value); return query; },
@@ -70,6 +71,7 @@ describe("종료 기수 자율 공유", () => {
     expect(data).toMatchObject({ sharingOnly: true, penaltyNotice: null, todayStatus: "not_enrolled" });
     expect(data.summary).toMatchObject({ missedDays: 0, completedDays: 0, completionRate: null });
     expect(data.habit.recentMisses).toBe(0);
+    expect(data.progress?.personal.completionRate).toBeNull();
     expect(data.calendar.every((day) => ["not_enrolled", "future"].includes(day.status))).toBe(true);
   });
 
@@ -86,6 +88,10 @@ describe("종료 기수 자율 공유", () => {
     expect(alumni.summary.totalLinks).toBe(1);
     expect(alumni.calendar.find((day) => day.date === "2026-09-15")?.submissions).toHaveLength(1);
     expect(active.crewGrowth).toEqual(before.crewGrowth);
+    expect(active.progress?.crew).toEqual(before.progress?.crew);
+    expect(active.progress?.activity).toEqual(before.progress?.activity);
+    expect(alumni.progress?.activity).toEqual(active.progress?.activity);
+    expect(alumni.progress?.personal.totalLinks).toBe(1);
     expect(active.sharingOnly).toBe(false);
     expect(active.todayStatus).toBe("pending");
     expect(active.penaltyNotice?.dailyAmount).toBe(2000);
@@ -119,5 +125,71 @@ describe("종료 기수 자율 공유", () => {
     expect(after).toEqual(before);
     expect(calculatePenalty(after, [{ effectiveFrom: "2026-01-07", amount: 0 }])).toBe(0);
     expect(calculateParticipantStatuses({ ...input, from: "2026-09-01" })).toEqual([]);
+  });
+});
+
+describe("참가자 홈의 전체 기간 진행 현황", () => {
+  it("운영 제외일과 늦은 제출은 활동 합계에서 제외하고 피드는 유지한다", async () => {
+    mocks.tables.excluded_dates = [{ challenge_id: 1, excluded_date: "2026-09-14" }];
+    mocks.tables.submissions = [
+      { id: 1, challenge_id: 1, participant_id: 10, submitted_at: "2026-09-14T03:00:00Z", title: null, description: null, url: "https://example.com/share/1", is_featured: false },
+      { id: 2, challenge_id: 1, participant_id: 10, submitted_at: "2026-09-13T14:01:00Z", title: null, description: null, url: "https://example.com/share/2", is_featured: false },
+    ];
+    await POST(request("10"));
+    const data = await getAppData({ participantId: "10", date: "all" });
+    expect(data.feed).toHaveLength(3);
+    expect(data.progress?.crew).toMatchObject({ totalLinks: 1, activeDays: 1 });
+    expect(data.crewGrowth).toMatchObject({ totalLinks: 1, completionRate: data.progress?.crew.completionRate });
+    expect(data.progress?.activity.filter((day) => day.count > 0)).toEqual([{ date: "2026-09-15", count: 1, participantCount: 1 }]);
+  });
+
+  it("조회 월과 피드 필터를 바꿔도 누적 현황은 유지된다", async () => {
+    await POST(request("10"));
+    const current = await getAppData({ participantId: "10" });
+    const previous = await getAppData({ participantId: "10", month: "2026-08", search: "없는 제목", featuredOnly: true });
+    expect(previous.progress).toEqual(current.progress);
+    expect(previous.crewGrowth).toEqual(current.crewGrowth);
+    expect(current.crewGrowth).toMatchObject({
+      totalLinks: current.progress?.crew.totalLinks,
+      completionRate: current.progress?.crew.completionRate,
+      completedDays: current.progress?.crew.completedDays,
+      decidedDays: current.progress?.crew.decidedDays,
+    });
+    expect(current.progress?.personal).toMatchObject({ totalLinks: 1, completedDays: 1, completionRate: 50 });
+    expect(previous.summary.totalLinks).toBe(0);
+  });
+
+  it("오늘의 대기는 마감 후 미제출로 바뀌며 완료 인원은 유지한다", async () => {
+    await POST(request("10"));
+    const before = await getAppData({ participantId: "10" });
+    expect(before.progress?.crew.today).toEqual({ completed: 1, pending: 1, missed: 0, exempt: 0, target: 2 });
+    vi.setSystemTime(new Date("2026-09-15T14:01:00Z"));
+    const after = await getAppData({ participantId: "10" });
+    expect(after.progress?.crew.today).toEqual({ completed: 1, pending: 0, missed: 1, exempt: 0, target: 2 });
+  });
+
+  it.each(["2026-08-31T12:00:00Z", "2026-09-13T12:00:00Z", "2027-01-01T12:00:00Z"])("시작 전·주말·종료 후에는 오늘 대기 인원을 만들지 않는다: %s", async (now) => {
+    vi.setSystemTime(new Date(now));
+    const data = await getAppData({ participantId: "10" });
+    expect(data.progress?.crew.today).toEqual({ completed: 0, pending: 0, missed: 0, exempt: 0, target: 0 });
+  });
+
+  it("1,000개를 넘는 제출도 모두 집계하고 날짜별 크루 합계만 반환한다", async () => {
+    mocks.tables.submissions = Array.from({ length: 1001 }, (_, index) => ({
+      id: index + 1, challenge_id: 1, participant_id: index === 1000 ? 10 : 11,
+      title: null, description: null, url: `https://example.com/share/${index}`,
+      submitted_at: "2026-09-14T03:00:00Z", is_featured: false,
+    }));
+    const data = await getAppData({ participantId: "10" });
+    expect(data.progress?.crew.totalLinks).toBe(1001);
+    expect(data.progress?.personal.totalLinks).toBe(1);
+    expect(data.progress?.activity.find((day) => day.date === "2026-09-14")).toEqual({ date: "2026-09-14", count: 1001, participantCount: 2 });
+    expect(data.progress?.activity.every((day) => Object.keys(day).sort().join(",") === "count,date,participantCount")).toBe(true);
+  });
+
+  it("선택 전과 활성 챌린지가 없을 때 개인 활동을 반환하지 않는다", async () => {
+    expect((await getAppData({})).progress).toBeNull();
+    mocks.tables.challenges = [];
+    expect((await getAppData({ participantId: "10" })).progress).toBeNull();
   });
 });

@@ -44,6 +44,7 @@ export type CalendarDay = {
 };
 
 export type AppData = {
+  progress: ChallengeProgress | null;
   sharingOnly: boolean;
   participantGroups: ParticipantGroup[];
   habit: { week: import("./habits").HabitDay[]; recentMisses: number };
@@ -87,6 +88,32 @@ export type AppData = {
     isPinned: boolean;
     createdAt: string;
   }>;
+};
+
+export type ActivityDay = {
+  date: string;
+  count: number;
+  participantCount: number;
+};
+
+export type ChallengeProgress = {
+  personal: {
+    completedDays: number;
+    completionRate: number | null;
+    totalLinks: number;
+    activeDays: number;
+    streak: number;
+  };
+  crew: {
+    activeDays: number;
+    today: { completed: number; pending: number; missed: number; exempt: number; target: number };
+    completionRate: number | null;
+    completedDays: number;
+    decidedDays: number;
+    totalLinks: number;
+    goalRate: number;
+  };
+  activity: ActivityDay[];
 };
 
 export type ParticipantGroup = {

@@ -1,4 +1,4 @@
-export const SHARED_LINK_REQUIRED_MESSAGE = "링크에 ‘share’가 없어요. ‘공유방법’을 확인한 뒤 공유 링크를 붙여넣어주세요.";
+export const SHARED_LINK_REQUIRED_MESSAGE = "‘share’ 또는 ‘/notebook/’이 포함된 링크를 입력해주세요. ‘공유방법’을 확인한 뒤 링크를 붙여넣어주세요.";
 
 export function getSubmissionUrlError(value: string): string | null {
   try {
@@ -6,7 +6,8 @@ export function getSubmissionUrlError(value: string): string | null {
     if (url.protocol !== "http:" && url.protocol !== "https:") {
       return "http 또는 https로 시작하는 정상적인 링크를 입력해주세요.";
     }
-    return value.trim().toLowerCase().includes("share") ? null : SHARED_LINK_REQUIRED_MESSAGE;
+    const normalized = value.trim().toLowerCase();
+    return normalized.includes("share") || normalized.includes("/notebook/") ? null : SHARED_LINK_REQUIRED_MESSAGE;
   } catch {
     return "http 또는 https로 시작하는 정상적인 링크를 입력해주세요.";
   }

@@ -1,5 +1,6 @@
 import "server-only";
 import { groupParticipants } from "@/lib/participant-groups";
+import { buildChallengeProgress } from "@/lib/challenge-progress";
 import { isVoluntarySharingChallenge } from "@/lib/participation";
 import { recentMisses, weekDates } from "@/lib/habits";
 
@@ -187,23 +188,17 @@ function buildData(
     return {
       participantId: participant.id,
       allStatuses,
-      monthlyStatuses: allStatuses.filter((item) => item.date.startsWith(month)),
     };
   });
   const selectedGrowth = participantGrowth.find(
     (entry) => entry.participantId === selectedParticipant?.id,
   );
-  const crewStatuses = participantGrowth.flatMap((entry) =>
-    entry.monthlyStatuses.map((item) => item.status),
-  );
-  const crewCompletedDays = crewStatuses.filter((status) => status === "completed").length;
-  const crewDecidedDays = crewCompletedDays + crewStatuses.filter((status) => status === "missed").length;
+  const progress = buildChallengeProgress({
+    challenge, today, participantId: selectedParticipant?.id ?? "",
+    histories: participantGrowth, submissions, excludedDates,
+  });
   const crewParticipantCount = participantGrowth.filter((entry) =>
-    entry.monthlyStatuses.some((item) => item.status !== "not_enrolled" && item.status !== "future"),
-  ).length;
-  const challengeParticipantIds = new Set(participantRows.map((row) => String(row.id)));
-  const crewTotalLinks = submissions.filter((submission) =>
-    challengeParticipantIds.has(submission.participantId) && kstDateKey(submission.submittedAt).startsWith(month),
+    entry.allStatuses.some((item) => item.status !== "not_enrolled" && item.status !== "future"),
   ).length;
 
   const normalizedSearch = query.search?.trim().toLocaleLowerCase("ko") ?? "";
@@ -239,6 +234,7 @@ function buildData(
     .map((item) => item.status) ?? [];
 
   return {
+    progress: selectedParticipant ? progress : null,
     sharingOnly,
     demo,
     participantGroups: groupParticipants(
@@ -279,12 +275,12 @@ function buildData(
       previousMonthCompletionRate: calculateCompletionRate(previousMonthStatuses),
     },
     crewGrowth: {
-      completionRate: calculateCompletionRate(crewStatuses),
-      completedDays: crewCompletedDays,
-      decidedDays: crewDecidedDays,
-      totalLinks: crewTotalLinks,
+      completionRate: progress.crew.completionRate,
+      completedDays: progress.crew.completedDays,
+      decidedDays: progress.crew.decidedDays,
+      totalLinks: progress.crew.totalLinks,
       participantCount: crewParticipantCount,
-      goalRate: 90,
+      goalRate: progress.crew.goalRate,
     },
     calendar,
     feed,
@@ -374,6 +370,18 @@ function demoRows(now: Date) {
   };
 }
 
+// Read every page so long-running challenges do not silently lose older records.
+async function allRows<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>) {
+  const rows: T[] = [];
+  const size = 1000;
+  for (let from = 0; ; from += size) {
+    const result = await page(from, from + size - 1);
+    if (result.error) throw result.error;
+    rows.push(...(result.data ?? []));
+    if ((result.data?.length ?? 0) < size) return { data: rows, error: null };
+  }
+}
+
 export async function getAppData(query: AppQuery): Promise<AppData> {
   const now = new Date();
   if (isDemoMode()) {
@@ -413,6 +421,7 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
   if (challengeError) throw challengeError;
   if (!challenge) {
     return {
+      progress: null,
       sharingOnly: false,
       demo: false,
       habit: { week: [], recentMisses: 0 },
@@ -460,8 +469,8 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
   const [{ data: participants, error: participantsError }, { data: submissions, error: submissionsError }, { data: exemptions, error: exemptionsError }, { data: excluded, error: excludedError }, { data: notices, error: noticesError }] =
     await Promise.all([
       db.from("participants").select("id,name,affiliation,joined_at,left_at,is_active").eq("challenge_id", challengeId).order("name"),
-      db.from("submissions").select("id,participant_id,title,url,description,submitted_at,is_featured").in("challenge_id", [challengeId, ...sharingChallengeIds]).gte("submitted_at", new Date(`${challenge.start_date}T00:00:00+09:00`).toISOString()).order("submitted_at", { ascending: false }),
-      db.from("exemptions").select("participant_id,exemption_date").eq("challenge_id", challengeId),
+      allRows((from, to) => db.from("submissions").select("id,participant_id,title,url,description,submitted_at,is_featured").in("challenge_id", [challengeId, ...sharingChallengeIds]).gte("submitted_at", new Date(`${challenge.start_date}T00:00:00+09:00`).toISOString()).lte("submitted_at", now.toISOString()).order("submitted_at").order("id").range(from, to)),
+      allRows((from, to) => db.from("exemptions").select("participant_id,exemption_date").eq("challenge_id", challengeId).order("id").range(from, to)),
       db.from("excluded_dates").select("excluded_date").eq("challenge_id", challengeId),
       db.from("notices").select("id,title,content,is_pinned,created_at").eq("challenge_id", challengeId).order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
     ]);

@@ -33,6 +33,8 @@ import type { AppData, CalendarDay, DailyStatus, Submission } from "@/lib/types"
 import { MissionCard, ReminderCard, WeekRecord } from "./habit-cards";
 import { ParticipantDirectory } from "./participant-directory";
 import { ShareLinkHelp } from "./share-link-help";
+import { ChallengeDashboard } from "./challenge-dashboard";
+import { challengeTimeline } from "@/lib/challenge-progress";
 
 type Tab = "home" | "submit" | "feed" | "growth";
 
@@ -93,10 +95,7 @@ function hostLabel(url: string) {
 
 function challengeProgress(data: AppData) {
   if (!data.challenge) return 0;
-  const start = new Date(`${data.challenge.startDate}T00:00:00Z`).getTime();
-  const end = new Date(`${data.challenge.endDate}T23:59:59Z`).getTime();
-  const now = new Date(data.now).getTime();
-  return Math.max(0, Math.min(100, Math.round(((now - start) / (end - start)) * 100)));
+  return challengeTimeline(data.challenge, kstDateKey(data.now)).percent;
 }
 
 export function LearningCrewApp({ initialData }: { initialData: AppData }) {
@@ -115,7 +114,6 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   const [hydrated, setHydrated] = useState(false);
   const [receipt, setReceipt] = useState<{ onTime: boolean; url: string } | null>(null);
   const [remaining, setRemaining] = useState<string | null>(null);
-  const [reminderSet, setReminderSet] = useState(true);
   const [editing, setEditing] = useState<Submission | null>(null);
   const [submissionUrlError, setSubmissionUrlError] = useState<string | null>(null);
   const [editUrlError, setEditUrlError] = useState<string | null>(null);
@@ -134,12 +132,6 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
         setBookmarks(JSON.parse(window.localStorage.getItem("aicrew_bookmarks") ?? "[]"));
       } catch {
         setBookmarks([]);
-      }
-      try {
-        const saved = JSON.parse(window.localStorage.getItem("aicrew_reminder") ?? "null") as { participantId?: string } | null;
-        setReminderSet(Boolean(saved));
-      } catch {
-        setReminderSet(false);
       }
       setHydrated(true);
     }, 0);
@@ -367,15 +359,6 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   const rateChange = completionRate !== null && previousCompletionRate !== null
     ? completionRate - previousCompletionRate
     : null;
-  const crewCompletionRate = data.crewGrowth.completionRate;
-  const crewGoalProgress = crewCompletionRate === null
-    ? 0
-    : Math.min(100, Math.round((crewCompletionRate / data.crewGrowth.goalRate) * 100));
-  const penaltyStart = data.penaltyNotice?.startDate;
-  const withinFirstWeek = penaltyStart !== undefined
-    && kstDateKey(data.now) >= penaltyStart
-    && daysUntil(penaltyStart, kstDateKey(data.now)) < 5;
-  const promoteReminder = withinFirstWeek && !reminderSet;
   const firstDayOffset = data.calendar[0]
     ? (new Date(`${data.calendar[0].date}T00:00:00Z`).getUTCDay() + 6) % 7
     : 0;
@@ -408,8 +391,10 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
           <section className="min-w-0">
             {tab === "home" && (
               <div className="grid gap-5">
+                {data.progress && selectedParticipant?.id === participantId && (
+                  <ChallengeDashboard key={`progress-${participantId}`} challenge={data.challenge} progress={data.progress} now={data.now} onGrowth={() => setTab("growth")} />
+                )}
                 <PenaltyNotice notice={data.penaltyNotice} now={data.now} />
-                {promoteReminder && <ReminderCard key={`top-${participantId}`} participantId={participantId} demo={data.demo} />}
                 {data.notices[0] && (
                   <article className="notice-card">
                     <Megaphone size={20} />
@@ -440,6 +425,8 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     <button className="white-button" type="button" onClick={() => setTab("submit")}>링크 등록하기</button>
                   )}
                 </section>
+                </>}
+                {!data.sharingOnly && <>
                 <MissionCard data={data} onSubmit={() => setTab("submit")} />
                 <WeekRecord days={data.habit.week} />
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -478,7 +465,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     {data.sharingOnly ? <span>🔗 프롬프트 공유한 날</span> : <><span>✅ 완료</span><span>❌ 미제출</span><span>🟦 면제</span><span className="text-slate-400">회색 비대상일</span></>}
                   </div>
                 </section>
-                {!data.sharingOnly && !promoteReminder && <ReminderCard key={participantId} participantId={participantId} demo={data.demo} />}
+                {!data.sharingOnly && <ReminderCard key={`reminder-${participantId}`} participantId={participantId} demo={data.demo} />}
               </div>
             )}
 
@@ -601,14 +588,17 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                 <section className="growth-hero">
                   <Sparkles size={30} />
                   <div>
-                    <p className="text-sm font-bold text-blue-900/70">{month.replace("-", "년 ")}월</p>
+                    <p className="text-sm font-bold text-blue-900/70">{data.challenge.name} · 챌린지 전체 현황</p>
                     <h1 className="text-2xl font-black">크루 성장</h1>
                     <p className="mt-1 text-sm font-semibold text-blue-950/70">서로의 순위보다 나의 꾸준함과 우리의 변화를 확인해요.</p>
                   </div>
                 </section>
+                {data.progress && selectedParticipant?.id === participantId && (
+                  <ChallengeDashboard key={`growth-${participantId}`} challenge={data.challenge} progress={data.progress} now={data.now} />
+                )}
                 <section className="surface-card">
                   <div>
-                    <p className="text-sm font-bold text-blue-700">비교 없는 개인 기록</p>
+                    <p className="text-sm font-bold text-blue-700">{month.replace("-", "년 ")}월 · 비교 없는 개인 기록</p>
                     <h2 className="mt-1 text-xl font-black">{selectedParticipant?.name}님의 성장</h2>
                   </div>
                   {data.sharingOnly ? <p className="mt-5 leading-7 text-slate-600">이번 달 {data.summary.totalLinks}개의 프롬프트를 공유했어요. 자율 공유는 제출률이나 미제출을 집계하지 않습니다.</p> : <>
@@ -630,27 +620,6 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                             : "지난달과 같은 제출률을 유지하고 있어요. 꾸준함이 쌓이고 있습니다."}
                   </div>
                   </>}
-                </section>
-                <section className="surface-card">
-                  <div className="flex flex-wrap items-end justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-bold text-emerald-700">함께 만든 변화</p>
-                      <h2 className="mt-1 text-xl font-black">크루 공동 목표</h2>
-                    </div>
-                    <p className="text-3xl font-black text-emerald-700">{crewCompletionRate === null ? "—" : `${crewCompletionRate}%`}</p>
-                  </div>
-                  <div className="growth-progress-track mt-5" role="progressbar" aria-label={`크루 제출률 ${crewCompletionRate ?? 0}%, 공동 목표 ${data.crewGrowth.goalRate}%`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={crewCompletionRate ?? 0}>
-                    <span className="growth-progress-bar" style={{ width: `${crewGoalProgress}%` }} />
-                  </div>
-                  <div className="mt-2 flex justify-between text-xs font-bold text-slate-500">
-                    <span>함께 달성 중</span>
-                    <span>공동 목표 {data.crewGrowth.goalRate}%</span>
-                  </div>
-                  <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                    <CrewMetric label="함께 완료" value={`${data.crewGrowth.completedDays}/${data.crewGrowth.decidedDays}회`} detail="확정된 숙제 대상 횟수" />
-                    <CrewMetric label="공유한 링크" value={`${data.crewGrowth.totalLinks}개`} detail="이번 달 크루 전체" />
-                    <CrewMetric label="함께한 구성원" value={`${data.crewGrowth.participantCount}명`} detail="이름과 순위 없이 합계만" />
-                  </div>
                 </section>
                 <p className="text-center text-sm leading-6 text-slate-500">다른 참가자의 완료일·미제출·연속 달성은 표시하지 않으며, 운영에 필요한 상세 현황은 관리자 화면에서만 확인합니다.</p>
               </div>
@@ -811,10 +780,6 @@ function StatCard({ label, value, suffix, icon }: { label: string; value: number
 
 function GrowthMetric({ label, value, detail, icon }: { label: string; value: string; detail: string; icon: React.ReactNode }) {
   return <article className="rounded-2xl bg-slate-50 p-4"><span className="text-blue-600">{icon}</span><p className="mt-3 text-xs font-bold text-slate-500">{label}</p><p className="mt-1 text-xl font-black">{value}</p><p className="mt-1 text-xs font-semibold text-slate-400">{detail}</p></article>;
-}
-
-function CrewMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return <article className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4"><p className="text-xs font-bold text-emerald-700">{label}</p><p className="mt-1 text-xl font-black text-slate-900">{value}</p><p className="mt-1 text-xs font-semibold text-slate-500">{detail}</p></article>;
 }
 
 function Field({ label, hint, required, children }: { label: string; hint?: string; required?: boolean; children: React.ReactNode }) {
