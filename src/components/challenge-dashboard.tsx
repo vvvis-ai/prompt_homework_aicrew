@@ -14,20 +14,15 @@ type ActivityView = "daily" | "weekly" | "cumulative";
 
 export function ChallengeDashboard({ challenge, progress, now, onGrowth }: {
   challenge: Challenge;
-  progress: ChallengeProgress;
+  progress: ChallengeProgress | null;
   now: string;
   onGrowth?: () => void;
 }) {
   const today = kstDateKey(now);
   const timeline = challengeTimeline(challenge, today);
-  const { crew } = progress;
   const before = today < challenge.startDate;
   const ended = today > challenge.endDate;
   const remaining = daysUntil(today, challenge.endDate);
-  const rate = crew.completionRate;
-  const crewMessage = rate === null ? "첫 완료 기록을 기다리고 있어요"
-    : rate >= crew.goalRate ? "확정 기준으로 공동 목표를 달성하고 있어요"
-      : `확정 기준 공동 목표까지 ${crew.goalRate - rate}%p 남았어요`;
 
   return (
     <section className="challenge-dashboard" aria-label="챌린지 진행 현황">
@@ -49,6 +44,64 @@ export function ChallengeDashboard({ challenge, progress, now, onGrowth }: {
         </div>
       </div>
 
+      <div aria-busy={!progress}>
+        {progress ? <DashboardContent progress={progress} today={today} before={before} ended={ended} /> : <DashboardSkeleton />}
+      </div>
+
+      <div className="dashboard-footnote">
+        <p>활동 그래프는 현재 챌린지 참가자 전체의 공유 기록입니다.<br />마감 후·주말·공휴일·운영 제외일의 공유는 집계하지 않아요. 제출률은 완료·확정 미제출 기준이며, 오늘 대기·면제·휴일은 제외해요.</p>
+        {onGrowth && <button type="button" onClick={onGrowth}>성장 자세히 보기 <ArrowUpRight size={16} /></button>}
+      </div>
+    </section>
+  );
+}
+
+function DashboardSkeleton() {
+  return <>
+    <div className="dashboard-summary">
+      <div className="dashboard-crew">
+        <h3><Users size={16} /> 크루 공동 목표</h3>
+        <div className="dashboard-skeleton mt-4 h-4 w-28" aria-hidden="true" />
+        <div className="dashboard-skeleton my-3 h-11 w-24" aria-hidden="true" />
+        <div className="dashboard-skeleton h-2 w-full" aria-hidden="true" />
+        <div className="dashboard-skeleton mt-4 h-4 w-4/5" aria-hidden="true" />
+        <div className="dashboard-skeleton mt-3 h-4 w-full" aria-hidden="true" />
+        <div className="dashboard-skeleton mt-3 h-8 w-full" aria-hidden="true" />
+      </div>
+      <div className="dashboard-today">
+        <h3><CheckCircle2 size={16} /> 오늘의 크루 현황</h3>
+        <div className="dashboard-skeleton mt-4 h-4 w-4/5" aria-hidden="true" />
+        <div className="dashboard-today-counts" aria-hidden="true">
+          <div className="dashboard-skeleton h-20" />
+          <div className="dashboard-skeleton h-20" />
+        </div>
+        <div className="dashboard-skeleton mt-3 h-10 w-full" aria-hidden="true" />
+      </div>
+    </div>
+    <div className="activity-section">
+      <div className="activity-heading">
+        <div>
+          <h3>크루 전체 AI 활동</h3>
+          <p role="status">챌린지 현황을 불러오고 있어요.</p>
+        </div>
+      </div>
+      <div className="dashboard-skeleton h-56 w-full" aria-hidden="true" />
+      <div className="dashboard-skeleton mt-4 h-3 w-2/3 ml-auto" aria-hidden="true" />
+      <div className="dashboard-skeleton mt-4 h-8 w-full" aria-hidden="true" />
+    </div>
+  </>;
+}
+
+function DashboardContent({ progress, today, before, ended }: {
+  progress: ChallengeProgress; today: string; before: boolean; ended: boolean;
+}) {
+  const { crew } = progress;
+  const rate = crew.completionRate;
+  const crewMessage = rate === null ? "첫 완료 기록을 기다리고 있어요"
+    : rate >= crew.goalRate ? "확정 기준으로 공동 목표를 달성하고 있어요"
+      : `확정 기준 공동 목표까지 ${crew.goalRate - rate}%p 남았어요`;
+
+  return <>
       <div className="dashboard-summary">
         <div className="dashboard-crew">
           <div className="flex items-center justify-between gap-2">
@@ -70,7 +123,7 @@ export function ChallengeDashboard({ challenge, progress, now, onGrowth }: {
           <p className="mt-3 text-xs text-slate-500">{dateLabel(today)} · 제출 대상 {crew.today.target}명</p>
           <div className="dashboard-today-counts">
             <p><span>완료</span><strong>{crew.today.completed}<small>명</small></strong></p>
-            <p><span>대기</span><strong>{crew.today.pending}<small>명</small></strong></p>
+            <p><span>제출대기</span><strong>{crew.today.pending}<small>명</small></strong></p>
           </div>
           {crew.today.missed > 0 && <p className="mt-2 text-xs font-semibold text-amber-800">마감 후 미제출 {crew.today.missed}명</p>}
           <p className="mt-3 text-xs leading-5 text-slate-500">{before ? "챌린지 시작 전이에요." : ended ? "챌린지가 종료되어 오늘은 집계하지 않아요." : crew.today.target === 0 ? "오늘은 제출 대상이 없어요. 휴일·면제·참여 기간을 반영했어요." : crew.today.pending > 0 ? "대기 인원은 오늘 23:00까지 참여할 수 있어요." : crew.today.completed === crew.today.target ? "오늘 제출 대상 모두 완료했어요." : "오늘 제출이 마감되었어요."}</p>
@@ -80,12 +133,7 @@ export function ChallengeDashboard({ challenge, progress, now, onGrowth }: {
 
       <ActivityChart days={progress.activity} today={today} totalLinks={crew.totalLinks} activeDays={crew.activeDays} />
 
-      <div className="dashboard-footnote">
-        <p>활동 그래프는 현재 챌린지 참가자 전체의 공유 기록입니다.<br />마감 후·주말·공휴일·운영 제외일의 공유는 집계하지 않아요. 제출률은 완료·확정 미제출 기준이며, 오늘 대기·면제·휴일은 제외해요.</p>
-        {onGrowth && <button type="button" onClick={onGrowth}>성장 자세히 보기 <ArrowUpRight size={16} /></button>}
-      </div>
-    </section>
-  );
+  </>;
 }
 
 function ActivityChart({ days, today, totalLinks, activeDays }: {

@@ -127,7 +127,9 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setParticipantId(window.localStorage.getItem("aicrew_participant_id") ?? "");
+      const savedParticipantId = window.localStorage.getItem("aicrew_participant_id") ?? "";
+      setBusy(Boolean(savedParticipantId));
+      setParticipantId(savedParticipantId);
       try {
         setBookmarks(JSON.parse(window.localStorage.getItem("aicrew_bookmarks") ?? "[]"));
       } catch {
@@ -163,7 +165,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
           setToast("데이터를 새로 불러오지 못했습니다.");
         }
       } finally {
-        setBusy(false);
+        if (!controller.signal.aborted) setBusy(false);
       }
     }, search ? 250 : 0);
     return () => {
@@ -186,11 +188,13 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   }, [hydrated, participantId, feedDate, month, featuredOnly, savedOnly, search]);
 
   const chooseParticipant = (id: string) => {
+    setBusy(true);
     setReceipt(null);
     setSubmissionUrlError(null);
     window.localStorage.setItem("aicrew_participant_id", id);
     setParticipantId(id);
     setTab("home");
+    window.scrollTo({ top: 0, behavior: "instant" });
   };
 
   const changeParticipant = () => {
@@ -391,9 +395,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
           <section className="min-w-0">
             {tab === "home" && (
               <div className="grid gap-5">
-                {data.progress && selectedParticipant?.id === participantId && (
-                  <ChallengeDashboard key={`progress-${participantId}`} challenge={data.challenge} progress={data.progress} now={data.now} onGrowth={() => setTab("growth")} />
-                )}
+                <ChallengeDashboard key={`progress-${participantId}`} challenge={data.challenge} progress={selectedParticipant?.id === participantId ? data.progress : null} now={data.now} onGrowth={() => setTab("growth")} />
                 <PenaltyNotice notice={data.penaltyNotice} now={data.now} />
                 {data.notices[0] && (
                   <article className="notice-card">
@@ -593,9 +595,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     <p className="mt-1 text-sm font-semibold text-blue-950/70">서로의 순위보다 나의 꾸준함과 우리의 변화를 확인해요.</p>
                   </div>
                 </section>
-                {data.progress && selectedParticipant?.id === participantId && (
-                  <ChallengeDashboard key={`growth-${participantId}`} challenge={data.challenge} progress={data.progress} now={data.now} />
-                )}
+                <ChallengeDashboard key={`growth-${participantId}`} challenge={data.challenge} progress={selectedParticipant?.id === participantId ? data.progress : null} now={data.now} />
                 <section className="surface-card">
                   <div>
                     <p className="text-sm font-bold text-blue-700">{month.replace("-", "년 ")}월 · 비교 없는 개인 기록</p>

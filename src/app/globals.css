@@ -24,6 +24,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px soli
 .dashboard-heading h2 { font-size: 1.25rem; font-weight: 850; letter-spacing: -.035em; word-break: keep-all; }
 .dashboard-heading p { margin-top: .5rem; font-size: .75rem; color: #64748b; }
 .dashboard-phase { flex: none; border-radius: .6rem; background: #eef4ff; padding: .45rem .65rem; color: #2457e6; font-size: .7rem; font-weight: 750; }
+.dashboard-skeleton { border-radius: .5rem; background: #eaf0f8; }
 .dashboard-timeline { padding: 1.4rem 1.5rem; }
 .dashboard-track { position: relative; height: .4rem; border-radius: 1rem; background: #eaf0f8; }
 .dashboard-track > span { display: block; height: 100%; border-radius: inherit; background: var(--activity-blue); }
