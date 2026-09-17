@@ -372,18 +372,22 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
       <main className="min-h-screen px-5 py-6 sm:px-8 sm:py-10">
         <div className="mx-auto w-full max-w-6xl">
           <BrandHeader demo={data.demo} />
-          <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(19rem,0.8fr)_minmax(0,1.4fr)]">
-            <div className="grid gap-6">
+          <div className="preselect-layout mt-6">
+            <div className="preselect-challenge">
               <ChallengeCard data={data} progress={progress} />
-              <ParticipantDirectory groups={data.participantGroups} onChoose={chooseParticipant} />
-              <div>
-                <p className="text-center text-sm leading-6 text-slate-500">선택한 이름은 이 기기에만 저장되며 언제든 바꿀 수 있어요.</p>
-                <Link className="mx-auto mt-2 flex w-fit items-center gap-2 py-2 text-sm font-bold text-slate-500 hover:text-blue-700" href="/admin">
-                  <ShieldCheck size={17} /> 관리자
-                </Link>
-              </div>
             </div>
-            <ChallengeDashboard challenge={data.challenge} progress={data.progress} now={data.now} />
+            <div className="preselect-dashboard">
+              <ChallengeDashboard challenge={data.challenge} progress={data.progress} now={data.now} />
+            </div>
+            <div className="preselect-participants">
+              <ParticipantDirectory groups={data.participantGroups} onChoose={chooseParticipant} />
+            </div>
+            <div className="preselect-footer">
+              <p className="text-center text-sm leading-6 text-slate-500">선택한 이름은 이 기기에만 저장되며 언제든 바꿀 수 있어요.</p>
+              <Link className="mx-auto mt-2 flex w-fit items-center gap-2 py-2 text-sm font-bold text-slate-500 hover:text-blue-700" href="/admin">
+                <ShieldCheck size={17} /> 관리자
+              </Link>
+            </div>
           </div>
         </div>
       </main>

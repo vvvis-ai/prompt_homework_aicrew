@@ -2,8 +2,7 @@
 
 import { ArrowUpRight, CheckCircle2, Link2, Users } from "lucide-react";
 import { useId, useState } from "react";
-import { activityWeeks, challengeTimeline } from "@/lib/challenge-progress";
-import { daysUntil } from "@/lib/business";
+import { activityWeeks } from "@/lib/challenge-progress";
 import { kstDateKey } from "@/lib/time";
 import type { ActivityDay, Challenge, ChallengeProgress } from "@/lib/types";
 
@@ -19,32 +18,12 @@ export function ChallengeDashboard({ challenge, progress, now, onGrowth }: {
   onGrowth?: () => void;
 }) {
   const today = kstDateKey(now);
-  const timeline = challengeTimeline(challenge, today);
   const before = today < challenge.startDate;
   const ended = today > challenge.endDate;
-  const remaining = daysUntil(today, challenge.endDate);
 
   return (
     <section className="challenge-dashboard" aria-label="챌린지 진행 현황">
-      <div className="dashboard-heading">
-        <div>
-          <h2>챌린지, 어디까지 왔을까요?</h2>
-          <p>{challenge.name} · {dateLabel(challenge.startDate)} ~ {dateLabel(challenge.endDate)} · 전체 기간 누적</p>
-        </div>
-        <span className="dashboard-phase">{before ? "시작 예정" : ended ? "챌린지 종료" : remaining === 0 ? "오늘 종료" : `종료까지 ${remaining}일`}</span>
-      </div>
-
-      <div className="dashboard-timeline">
-        <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-          <p>{before ? "함께 시작할 날을 기다리고 있어요" : ended ? `${timeline.total}일의 여정을 마쳤어요` : <><strong>{timeline.elapsed}일째</strong> 함께하는 중</>}</p>
-          <span className="text-xs text-slate-500">전체 {timeline.total}일 · 기간 경과 {timeline.percent}%</span>
-        </div>
-        <div className="dashboard-track mt-3" role="progressbar" aria-label="챌린지 기간 경과" aria-valuemin={0} aria-valuemax={100} aria-valuenow={timeline.percent}>
-          <span style={{ width: `${timeline.percent}%` }} />
-        </div>
-      </div>
-
-      <div aria-busy={!progress}>
+      <div className="dashboard-content" aria-busy={!progress}>
         {progress ? <DashboardContent progress={progress} today={today} before={before} ended={ended} /> : <DashboardSkeleton />}
       </div>
 

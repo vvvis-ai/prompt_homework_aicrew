@@ -20,12 +20,8 @@
 button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid #2563eb; outline-offset: 4px; }
 .habit-eyebrow { color: #2457e6; font-size: .72rem; font-weight: 800; letter-spacing: .08em; }
 .challenge-dashboard { --activity-blue: #2457e6; --activity-ink: #17324d; min-width: 0; border: 1px solid var(--border); border-radius: 1.75rem; background: #fff; color: var(--activity-ink); overflow: hidden; }
-.dashboard-heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .85rem; padding: 1.5rem 1.5rem 0; }
-.dashboard-heading h2 { font-size: 1.25rem; font-weight: 850; letter-spacing: -.035em; word-break: keep-all; }
-.dashboard-heading p { margin-top: .5rem; font-size: .75rem; color: #64748b; }
-.dashboard-phase { flex: none; border-radius: .6rem; background: #eef4ff; padding: .45rem .65rem; color: #2457e6; font-size: .7rem; font-weight: 750; }
+.preselect-layout { display: grid; gap: 1.5rem; }
 .dashboard-skeleton { border-radius: .5rem; background: #eaf0f8; }
-.dashboard-timeline { padding: 1.4rem 1.5rem; }
 .dashboard-track { position: relative; height: .4rem; border-radius: 1rem; background: #eaf0f8; }
 .dashboard-track > span { display: block; height: 100%; border-radius: inherit; background: var(--activity-blue); }
 .dashboard-summary { display: grid; grid-template-columns: 1.15fr 1fr; margin: 0 1.5rem; border-top: 1px solid #e8edf4; border-bottom: 1px solid #e8edf4; }
@@ -82,9 +78,27 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px soli
 .dashboard-footnote { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; padding: 1rem 1.5rem; background: #f8fafc; border-top: 1px solid #e8edf4; }
 .dashboard-footnote p { flex: 1 1 260px; font-size: .65rem; line-height: 1.9; color: #64748b; }
 .dashboard-footnote button { display: inline-flex; min-height: 2.5rem; align-items: center; gap: .3rem; color: #2457e6; font-size: .75rem; font-weight: 750; }
+@media (max-width: 1023px) {
+  .dashboard-content { display: flex; flex-direction: column; }
+  .dashboard-content > .activity-section { order: -1; }
+}
+@media (min-width: 1024px) {
+  .preselect-layout {
+    grid-template-columns: minmax(19rem, .8fr) minmax(0, 1.4fr);
+    grid-template-areas:
+      "challenge dashboard"
+      "participants dashboard"
+      "footer dashboard";
+    align-items: start;
+    align-content: start;
+  }
+  .preselect-challenge { grid-area: challenge; }
+  .preselect-dashboard { grid-area: dashboard; }
+  .preselect-participants { grid-area: participants; }
+  .preselect-footer { grid-area: footer; }
+}
 @media (max-width: 520px) {
-  .dashboard-heading { padding: 1.2rem 1.1rem 0; }
-  .dashboard-timeline, .activity-section { padding: 1.2rem 1.1rem; }
+  .activity-section { padding: 1.2rem 1.1rem; }
   .dashboard-summary { margin: 0 1.1rem; grid-template-columns: 1fr; }
   .dashboard-crew { padding-right: 0; }
   .dashboard-today { padding-left: 0; border-left: 0; border-top: 1px solid #e8edf4; }
