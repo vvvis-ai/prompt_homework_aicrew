@@ -234,7 +234,9 @@ function buildData(
     .map((item) => item.status) ?? [];
 
   return {
-    progress: selectedParticipant ? progress : null,
+    // The crew dashboard is useful before a participant is selected as well.
+    // Its shared metrics do not depend on the personal participant id.
+    progress,
     sharingOnly,
     demo,
     participantGroups: groupParticipants(

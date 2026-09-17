@@ -133,3 +133,26 @@ export function formatKstTime(iso: string): string {
     hourCycle: "h23",
   }).format(new Date(iso));
 }
+
+export function kstDateTimeLocalValue(input: Date | string | number = new Date()): string {
+  const { year, month, day, hour, minute } = getKstParts(input);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+export function kstLocalDateTimeToIso(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!match) throw new Error("제출일시 형식을 확인해주세요.");
+  const [, yearText, monthText, dayText, hourText, minuteText] = match;
+  const [year, month, day, hour, minute] = [yearText, monthText, dayText, hourText, minuteText].map(Number);
+  const local = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  if (
+    local.getUTCFullYear() !== year ||
+    local.getUTCMonth() !== month - 1 ||
+    local.getUTCDate() !== day ||
+    local.getUTCHours() !== hour ||
+    local.getUTCMinutes() !== minute
+  ) {
+    throw new Error("유효한 제출일시를 입력해주세요.");
+  }
+  return new Date(local.getTime() - 9 * 60 * 60 * 1000).toISOString();
+}

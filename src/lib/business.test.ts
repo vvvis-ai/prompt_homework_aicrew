@@ -16,6 +16,8 @@ import {
   isMissConfirmed,
   isSubmissionOnTime,
   kstDateKey,
+  kstDateTimeLocalValue,
+  kstLocalDateTimeToIso,
 } from "@/lib/time";
 import { normalizeUrl } from "@/lib/url";
 
@@ -48,6 +50,12 @@ describe("KST 마감 규칙", () => {
 
   it("서버 UTC 시각을 KST 날짜로 바꾼다", () => {
     expect(kstDateKey("2026-09-03T15:01:00Z")).toBe("2026-09-04");
+  });
+
+  it("관리자 입력용 한국시간과 ISO 시각을 서로 변환한다", () => {
+    expect(kstLocalDateTimeToIso("2026-09-03T22:45")).toBe("2026-09-03T13:45:00.000Z");
+    expect(kstDateTimeLocalValue("2026-09-03T13:45:00.000Z")).toBe("2026-09-03T22:45");
+    expect(() => kstLocalDateTimeToIso("2026-02-30T22:45")).toThrow();
   });
 });
 

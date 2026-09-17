@@ -370,14 +370,21 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   if (!participantId || (!selectedParticipant && hydrated && !busy)) {
     return (
       <main className="min-h-screen px-5 py-6 sm:px-8 sm:py-10">
-        <div className="mx-auto flex w-full max-w-lg flex-col gap-6 md:max-w-4xl">
+        <div className="mx-auto w-full max-w-6xl">
           <BrandHeader demo={data.demo} />
-          <ChallengeCard data={data} progress={progress} />
-          <ParticipantDirectory groups={data.participantGroups} onChoose={chooseParticipant} />
-          <p className="text-center text-sm leading-6 text-slate-500">선택한 이름은 이 기기에만 저장되며 언제든 바꿀 수 있어요.</p>
-          <Link className="mx-auto flex items-center gap-2 py-2 text-sm font-bold text-slate-500 hover:text-blue-700" href="/admin">
-            <ShieldCheck size={17} /> 관리자
-          </Link>
+          <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(19rem,0.8fr)_minmax(0,1.4fr)]">
+            <div className="grid gap-6">
+              <ChallengeCard data={data} progress={progress} />
+              <ParticipantDirectory groups={data.participantGroups} onChoose={chooseParticipant} />
+              <div>
+                <p className="text-center text-sm leading-6 text-slate-500">선택한 이름은 이 기기에만 저장되며 언제든 바꿀 수 있어요.</p>
+                <Link className="mx-auto mt-2 flex w-fit items-center gap-2 py-2 text-sm font-bold text-slate-500 hover:text-blue-700" href="/admin">
+                  <ShieldCheck size={17} /> 관리자
+                </Link>
+              </div>
+            </div>
+            <ChallengeDashboard challenge={data.challenge} progress={data.progress} now={data.now} />
+          </div>
         </div>
       </main>
     );
@@ -395,7 +402,6 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
           <section className="min-w-0">
             {tab === "home" && (
               <div className="grid gap-5">
-                <ChallengeDashboard key={`progress-${participantId}`} challenge={data.challenge} progress={selectedParticipant?.id === participantId ? data.progress : null} now={data.now} onGrowth={() => setTab("growth")} />
                 <PenaltyNotice notice={data.penaltyNotice} now={data.now} />
                 {data.notices[0] && (
                   <article className="notice-card">
@@ -595,7 +601,6 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     <p className="mt-1 text-sm font-semibold text-blue-950/70">서로의 순위보다 나의 꾸준함과 우리의 변화를 확인해요.</p>
                   </div>
                 </section>
-                <ChallengeDashboard key={`growth-${participantId}`} challenge={data.challenge} progress={selectedParticipant?.id === participantId ? data.progress : null} now={data.now} />
                 <section className="surface-card">
                   <div>
                     <p className="text-sm font-bold text-blue-700">{month.replace("-", "년 ")}월 · 비교 없는 개인 기록</p>

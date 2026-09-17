@@ -187,8 +187,10 @@ describe("참가자 홈의 전체 기간 진행 현황", () => {
     expect(data.progress?.activity.every((day) => Object.keys(day).sort().join(",") === "count,date,participantCount")).toBe(true);
   });
 
-  it("선택 전과 활성 챌린지가 없을 때 개인 활동을 반환하지 않는다", async () => {
-    expect((await getAppData({})).progress).toBeNull();
+  it("선택 전에는 크루 진행 현황을, 활성 챌린지가 없을 때는 null을 반환한다", async () => {
+    const beforeSelection = await getAppData({});
+    expect(beforeSelection.progress?.crew.today).toEqual({ completed: 0, pending: 2, missed: 0, exempt: 0, target: 2 });
+    expect(beforeSelection.progress?.personal).toMatchObject({ completedDays: 0, totalLinks: 0, activeDays: 0 });
     mocks.tables.challenges = [];
     expect((await getAppData({ participantId: "10" })).progress).toBeNull();
   });

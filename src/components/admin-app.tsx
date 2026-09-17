@@ -24,7 +24,7 @@ import {
 import Link from "next/link";
 import type { AdminData, AdminParticipant, DailyStatus, PaymentStatus, Submission } from "@/lib/types";
 import { HabitOverview, MissionManager } from "./habit-admin";
-import { kstDateKey } from "@/lib/time";
+import { kstDateKey, kstDateTimeLocalValue, kstLocalDateTimeToIso } from "@/lib/time";
 
 type Gate = "loading" | "login" | "operator" | "ready";
 type Tab = "overview" | "participants" | "matrix" | "submissions" | "settings" | "audit";
@@ -247,7 +247,7 @@ export function AdminApp() {
             {tab === "overview" && <><HabitOverview data={data} /><details className="mt-5"><summary className="cursor-pointer p-3 text-sm font-bold text-slate-500">조회 월 상세 통계·정산 보기</summary><Overview data={data} /></details></>}
             {tab === "participants" && <Participants data={data} mutate={mutate} />}
             {tab === "matrix" && <Matrix data={data} />}
-            {tab === "submissions" && <Submissions data={data} mutate={mutate} />}
+            {tab === "submissions" && <Submissions key={data.challenge?.id} data={data} mutate={mutate} />}
             {tab === "settings" && <div className="grid gap-5"><MissionManager key={data.challenge?.id} data={data} /><SettingsPanel data={data} mutate={mutate} /></div>}
             {tab === "audit" && <Audit data={data} />}
           </div>
@@ -366,7 +366,27 @@ function Matrix({ data }: { data: AdminData }) {
 }
 
 function Submissions({ data, mutate }: { data: AdminData; mutate: (path: string, method: "POST" | "PATCH" | "DELETE", body: unknown, success: string) => Promise<boolean> }) {
+  const [participantId, setParticipantId] = useState(data.participants[0]?.id ?? "");
   if (!data.challenge) return <Empty text="선택한 기수가 없습니다." />;
+  const nowLocal = kstDateTimeLocalValue();
+  const earliestLocal = `${data.challenge.startDate}T00:00`;
+  const latestLocal = [nowLocal, `${data.challenge.endDate}T23:00`].sort()[0];
+
+  async function create(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    const submittedAt = kstLocalDateTimeToIso(String(values.get("submittedAt") ?? ""));
+    const ok = await mutate("/api/admin/submissions", "POST", {
+      challengeId: data.challenge!.id,
+      participantId: values.get("participantId"),
+      title: values.get("title"),
+      url: values.get("url"),
+      description: values.get("description"),
+      submittedAt,
+    }, "제출물을 수기로 등록했습니다. 인정 제출일시 순으로 자동 정렬됩니다.");
+    if (ok) form.reset();
+  }
   async function edit(item: Submission) {
     const title = window.prompt("제목 (선택)", item.title ?? ""); if (title === null) return;
     const url = window.prompt("URL", item.url); if (!url) return;
@@ -377,7 +397,31 @@ function Submissions({ data, mutate }: { data: AdminData; mutate: (path: string,
     if (!window.confirm(`${item.participantName}님의 제출물을 삭제할까요? 이 작업은 변경 기록에 남습니다.`)) return;
     await mutate(`/api/admin/submissions/${item.id}`, "DELETE", { challengeId: data.challenge!.id, confirm: "DELETE" }, "제출물을 삭제했습니다.");
   }
-  return <section className="grid gap-3">{data.submissions.map((item) => <article className="feed-card" key={item.id}><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2"><span className="avatar-mini">{item.participantName.slice(0, 1)}</span><strong>{item.participantName}</strong>{item.isFeatured && <span className="featured-badge">추천</span>}</div><h3 className="mt-3 font-black">{item.title || "제목 없는 프롬프트"}</h3><a className="link-chip mt-2" href={item.url} target="_blank" rel="noreferrer"><Link2 size={15} /><span>{item.url}</span></a><p className="mt-2 text-sm text-slate-600">{item.description}</p><time className="mt-3 block text-xs font-bold text-slate-400">{new Date(item.submittedAt).toLocaleString("ko-KR")}</time></div><div className="flex gap-1"><button className="icon-button" title="수정" onClick={() => void edit(item)}><Pencil size={16} /></button><button className={`icon-button ${item.isFeatured ? "!bg-amber-100 !text-amber-700" : ""}`} title="추천" onClick={() => void mutate(`/api/admin/submissions/${item.id}/featured`, "PATCH", { challengeId: data.challenge!.id, isFeatured: !item.isFeatured }, item.isFeatured ? "추천을 해제했습니다." : "추천 프롬프트로 표시했습니다.")}><Star size={16} fill={item.isFeatured ? "currentColor" : "none"} /></button><button className="icon-button !text-rose-600" title="삭제" onClick={() => void remove(item)}><Trash2 size={16} /></button></div></div></article>)}{data.submissions.length === 0 && <Empty text="이 기수의 제출물이 없습니다." />}</section>;
+  return <div className="grid gap-5">
+    <section className="surface-card">
+      <div className="flex items-start gap-3">
+        <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-blue-100 text-blue-700"><Plus size={21} /></span>
+        <div><h2 className="text-lg font-black">제출물 수기 등록</h2><p className="mt-1 text-sm leading-6 text-slate-500">카카오톡 등 다른 플랫폼에 기한 내 제출한 기록을 관리자가 대신 등록할 수 있습니다. 실제 제출 시각을 입력하면 완료 기록과 목록 순서에 반영됩니다.</p></div>
+      </div>
+      {data.participants.length > 0 ? <form className="mt-5 grid gap-3" onSubmit={create}>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-1.5 text-sm font-bold">참가자<select className="form-input" name="participantId" required value={participantId} onChange={(event) => setParticipantId(event.target.value)}>{data.participants.map((person) => <option key={person.id} value={person.id}>{person.name}{person.affiliation ? ` · ${person.affiliation}` : ""}</option>)}</select></label>
+          <label className="grid gap-1.5 text-sm font-bold">인정 제출일시 (한국시간)<input className="form-input" name="submittedAt" type="datetime-local" step="60" min={earliestLocal} max={latestLocal} defaultValue={latestLocal} required /><span className="text-xs font-normal leading-5 text-slate-500">23:00까지 제출한 경우 해당 날짜의 완료로 집계됩니다.</span></label>
+        </div>
+        <label className="grid gap-1.5 text-sm font-bold">링크<input className="form-input" name="url" type="url" placeholder="https://..." required /></label>
+        <div className="grid gap-3 md:grid-cols-2">
+          <label className="grid gap-1.5 text-sm font-bold">제목 (선택)<input className="form-input" name="title" maxLength={120} /></label>
+          <label className="grid gap-1.5 text-sm font-bold">설명 (선택)<input className="form-input" name="description" maxLength={1000} /></label>
+        </div>
+        <div className="flex justify-end"><SubmitButton>수기로 등록</SubmitButton></div>
+      </form> : <p className="mt-5 text-sm font-bold text-slate-500">먼저 이 기수에 참가자를 등록해주세요.</p>}
+    </section>
+    <section className="grid gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-2 px-1"><div><h2 className="text-lg font-black">등록된 제출물</h2><p className="mt-1 text-sm text-slate-500">인정 제출일시 최신순으로 표시됩니다.</p></div><span className="text-sm font-bold text-slate-500">총 {data.submissions.length}개</span></div>
+      {data.submissions.map((item) => <article className="feed-card" key={item.id}><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2"><span className="avatar-mini">{item.participantName.slice(0, 1)}</span><strong>{item.participantName}</strong>{item.isFeatured && <span className="featured-badge">추천</span>}</div><h3 className="mt-3 font-black">{item.title || "제목 없는 프롬프트"}</h3><a className="link-chip mt-2" href={item.url} target="_blank" rel="noreferrer"><Link2 size={15} /><span>{item.url}</span></a><p className="mt-2 text-sm text-slate-600">{item.description}</p><time className="mt-3 block text-xs font-bold text-slate-400">인정 제출 {new Date(item.submittedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</time></div><div className="flex gap-1"><button className="icon-button" title="수정" onClick={() => void edit(item)}><Pencil size={16} /></button><button className={`icon-button ${item.isFeatured ? "!bg-amber-100 !text-amber-700" : ""}`} title="추천" onClick={() => void mutate(`/api/admin/submissions/${item.id}/featured`, "PATCH", { challengeId: data.challenge!.id, isFeatured: !item.isFeatured }, item.isFeatured ? "추천을 해제했습니다." : "추천 프롬프트로 표시했습니다.")}><Star size={16} fill={item.isFeatured ? "currentColor" : "none"} /></button><button className="icon-button !text-rose-600" title="삭제" onClick={() => void remove(item)}><Trash2 size={16} /></button></div></div></article>)}
+      {data.submissions.length === 0 && <Empty text="이 기수의 제출물이 없습니다." />}
+    </section>
+  </div>;
 }
 
 function SettingsPanel({ data, mutate }: { data: AdminData; mutate: (path: string, method: "POST" | "PATCH" | "DELETE", body: unknown, success: string) => Promise<boolean> }) {

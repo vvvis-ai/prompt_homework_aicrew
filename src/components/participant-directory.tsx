@@ -44,7 +44,7 @@ export function ParticipantDirectory({ groups, onChoose }: {
       </div>
       {selected && <div id={`crew-panel-${selected.id}`} role="tabpanel" aria-labelledby={`crew-tab-${selected.id}`} className="mt-4">
         {!selected.isActive && <p className="mb-4 text-sm text-slate-500">{selected.name}도 이름을 선택해 프롬프트를 자율적으로 공유할 수 있어요. 미등록에 따른 금액 차감은 없습니다.</p>}
-        <ul className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3">
+        <ul className="grid grid-cols-2 gap-2 sm:gap-3">
           {selected.members.map((person) => {
             const content = <>
               <span className="avatar !hidden shrink-0 sm:!grid sm:!size-9" aria-hidden="true">{person.name.slice(0, 1)}</span>
