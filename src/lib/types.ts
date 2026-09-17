@@ -81,6 +81,7 @@ export type AppData = {
   };
   calendar: CalendarDay[];
   feed: Submission[];
+  personalRecords: Submission[];
   notices: Array<{
     id: string;
     title: string;

@@ -85,6 +85,8 @@ describe("종료 기수 자율 공유", () => {
     const active = await getAppData({ participantId: "10", date: "all" });
     expect(alumni.feed[0]).toMatchObject({ participantId: "20", participantName: "이전멤버" });
     expect(active.feed).toEqual(alumni.feed);
+    expect(alumni.personalRecords).toHaveLength(1);
+    expect(active.personalRecords).toHaveLength(0);
     expect(alumni.summary.totalLinks).toBe(1);
     expect(alumni.calendar.find((day) => day.date === "2026-09-15")?.submissions).toHaveLength(1);
     expect(active.crewGrowth).toEqual(before.crewGrowth);

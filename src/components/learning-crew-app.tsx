@@ -37,6 +37,24 @@ import { ChallengeDashboard } from "./challenge-dashboard";
 import { challengeTimeline } from "@/lib/challenge-progress";
 
 type Tab = "home" | "submit" | "feed" | "growth";
+type PaginationItem = number | `ellipsis-${number}`;
+
+const GROWTH_RECORDS_PER_PAGE = 6;
+
+function paginationItems(currentPage: number, totalPages: number): PaginationItem[] {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1);
+
+  const pages = [...new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1])]
+    .filter((page) => page >= 1 && page <= totalPages)
+    .sort((a, b) => a - b);
+
+  return pages.flatMap((page, index) => {
+    const previousPage = pages[index - 1];
+    return previousPage && page - previousPage > 1
+      ? [`ellipsis-${previousPage}` as const, page]
+      : [page];
+  });
+}
 
 const statusContent: Record<DailyStatus, { icon: string; title: string; detail: string; tone: string }> = {
   completed: { icon: "✅", title: "오늘도 AI를 써봤어요", detail: "오늘의 제출 완료! 작은 실천이 하나 더 쌓였어요.", tone: "status-completed" },
@@ -117,6 +135,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   const [editing, setEditing] = useState<Submission | null>(null);
   const [submissionUrlError, setSubmissionUrlError] = useState<string | null>(null);
   const [editUrlError, setEditUrlError] = useState<string | null>(null);
+  const [growthPage, setGrowthPage] = useState(1);
 
   useEffect(() => {
     const update = () => setRemaining(formatRemainingUntilCutoff(new Date()));
@@ -193,6 +212,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
     setSubmissionUrlError(null);
     window.localStorage.setItem("aicrew_participant_id", id);
     setParticipantId(id);
+    setGrowthPage(1);
     setTab("home");
     window.scrollTo({ top: 0, behavior: "instant" });
   };
@@ -200,6 +220,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   const changeParticipant = () => {
     window.localStorage.removeItem("aicrew_participant_id");
     setParticipantId("");
+    setGrowthPage(1);
     setTab("home");
   };
 
@@ -341,6 +362,13 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
     () => (savedOnly ? data.feed.filter((submission) => bookmarks.includes(submission.id)) : data.feed),
     [bookmarks, data.feed, savedOnly],
   );
+  const growthTotalPages = Math.max(1, Math.ceil(data.personalRecords.length / GROWTH_RECORDS_PER_PAGE));
+  const currentGrowthPage = Math.min(growthPage, growthTotalPages);
+  const visibleGrowthRecords = data.personalRecords.slice(
+    (currentGrowthPage - 1) * GROWTH_RECORDS_PER_PAGE,
+    currentGrowthPage * GROWTH_RECORDS_PER_PAGE,
+  );
+  const growthPaginationItems = paginationItems(currentGrowthPage, growthTotalPages);
 
   if (!data.challenge) {
     return (
@@ -401,7 +429,10 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
         <div className="mt-5 grid gap-5 lg:grid-cols-[15rem_minmax(0,1fr)]">
           <aside className="hidden lg:block">
             <ChallengeCard data={data} progress={progress} compact />
-            <DesktopNav tab={tab} onChange={setTab} />
+            <DesktopNav tab={tab} onChange={(nextTab) => {
+              if (nextTab === "growth") setGrowthPage(1);
+              setTab(nextTab);
+            }} />
           </aside>
           <section className="min-w-0">
             {tab === "home" && (
@@ -600,9 +631,9 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                 <section className="growth-hero">
                   <Sparkles size={30} />
                   <div>
-                    <p className="text-sm font-bold text-blue-900/70">{data.challenge.name} · 챌린지 전체 현황</p>
-                    <h1 className="text-2xl font-black">크루 성장</h1>
-                    <p className="mt-1 text-sm font-semibold text-blue-950/70">서로의 순위보다 나의 꾸준함과 우리의 변화를 확인해요.</p>
+                    <p className="text-sm font-bold text-blue-900/70">{data.challenge.name} · 나의 등록 기록</p>
+                    <h1 className="text-2xl font-black">성장 기록</h1>
+                    <p className="mt-1 text-sm font-semibold text-blue-950/70">내가 등록한 AI 활용 기록과 꾸준함을 확인해요.</p>
                   </div>
                 </section>
                 <section className="surface-card">
@@ -630,7 +661,68 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                   </div>
                   </>}
                 </section>
-                <p className="text-center text-sm leading-6 text-slate-500">다른 참가자의 완료일·미제출·연속 달성은 표시하지 않으며, 운영에 필요한 상세 현황은 관리자 화면에서만 확인합니다.</p>
+                <section className="surface-card">
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-bold text-blue-700">최신 등록순</p>
+                      <h2 className="mt-1 text-xl font-black">내가 등록한 기록</h2>
+                    </div>
+                    <span className="rounded-full bg-blue-50 px-3 py-1.5 text-sm font-extrabold text-blue-700">총 {data.personalRecords.length}개</span>
+                  </div>
+
+                  {data.personalRecords.length === 0 ? (
+                    <div className="py-10 text-center">
+                      <Link2 className="mx-auto text-blue-500" size={30} />
+                      <p className="mt-3 font-extrabold">아직 등록한 기록이 없습니다</p>
+                      <p className="mt-1 text-sm text-slate-500">첫 AI 활용 링크를 남기면 이곳에 차곡차곡 쌓여요.</p>
+                      <button className="secondary-button mx-auto mt-4" type="button" onClick={() => setTab("submit")}>링크 등록하기<ArrowRight size={17} /></button>
+                    </div>
+                  ) : (
+                    <div className="mt-5 grid gap-4">
+                      {visibleGrowthRecords.map((submission) => (
+                        <article className="feed-card" key={submission.id}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-semibold text-slate-500">{displayDate(kstDateKey(submission.submittedAt))} {formatKstTime(submission.submittedAt)}</span>
+                                {submission.isFeatured && <span className="featured-badge">✨ 따라 해봐요</span>}
+                              </div>
+                              <h3 className="mt-3 text-lg font-black tracking-tight">{submission.title || hostLabel(submission.url)}</h3>
+                              {submission.description && <p className="mt-2 leading-7 text-slate-600">{submission.description}</p>}
+                            </div>
+                          </div>
+                          <a className="link-chip mt-4" href={submission.url} target="_blank" rel="noopener noreferrer">
+                            <Link2 size={17} /><span>{hostLabel(submission.url)}</span><ExternalLink size={15} />
+                          </a>
+                          {canParticipantEdit(submission.submittedAt, data.now) && (
+                            <div className="mt-4 flex gap-2 border-t border-slate-100 pt-3">
+                              <button className="small-action" type="button" onClick={() => { setEditUrlError(null); setEditing(submission); }}><Pencil size={15} /> 수정·삭제</button>
+                              <span className="ml-auto self-center text-xs font-semibold text-slate-400">오늘 등록한 글만 가능</span>
+                            </div>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+                  )}
+
+                  {growthTotalPages > 1 && (
+                    <nav className="pagination-nav mt-6" aria-label="성장 기록 페이지">
+                      <button className="page-button" type="button" aria-label="이전 페이지" disabled={currentGrowthPage === 1} onClick={() => setGrowthPage(currentGrowthPage - 1)}><ChevronLeft size={18} /></button>
+                      {growthPaginationItems.map((item) => typeof item === "number" ? (
+                        <button
+                          className={`page-button ${item === currentGrowthPage ? "page-button-active" : ""}`}
+                          type="button"
+                          key={item}
+                          aria-label={`${item}페이지`}
+                          aria-current={item === currentGrowthPage ? "page" : undefined}
+                          onClick={() => setGrowthPage(item)}
+                        >{item}</button>
+                      ) : <span className="page-ellipsis" key={item} aria-hidden="true">…</span>)}
+                      <button className="page-button" type="button" aria-label="다음 페이지" disabled={currentGrowthPage === growthTotalPages} onClick={() => setGrowthPage(currentGrowthPage + 1)}><ChevronRight size={18} /></button>
+                    </nav>
+                  )}
+                </section>
+                <p className="text-center text-sm leading-6 text-slate-500">이 화면에는 {selectedParticipant?.name}님이 직접 등록한 기록만 표시합니다.</p>
               </div>
             )}
           </section>
@@ -641,7 +733,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
         <NavButton active={tab === "home"} icon={<Home size={21} />} label="내 현황" onClick={() => setTab("home")} />
         <NavButton active={tab === "submit"} icon={<Plus size={22} />} label="등록" onClick={() => setTab("submit")} />
         <NavButton active={tab === "feed"} icon={<Link2 size={21} />} label="공유" onClick={() => setTab("feed")} />
-        <NavButton active={tab === "growth"} icon={<Sparkles size={21} />} label="성장" onClick={() => setTab("growth")} />
+        <NavButton active={tab === "growth"} icon={<Sparkles size={21} />} label="성장 기록" onClick={() => { setGrowthPage(1); setTab("growth"); }} />
       </nav>
 
       {selectedDay && (
@@ -773,7 +865,7 @@ function DesktopNav({ tab, onChange }: { tab: Tab; onChange: (tab: Tab) => void 
       <NavButton active={tab === "home"} icon={<Home size={19} />} label="내 현황" onClick={() => onChange("home")} />
       <NavButton active={tab === "submit"} icon={<Plus size={20} />} label="링크 등록" onClick={() => onChange("submit")} />
       <NavButton active={tab === "feed"} icon={<Link2 size={19} />} label="공유 피드" onClick={() => onChange("feed")} />
-      <NavButton active={tab === "growth"} icon={<Sparkles size={19} />} label="크루 성장" onClick={() => onChange("growth")} />
+      <NavButton active={tab === "growth"} icon={<Sparkles size={19} />} label="성장 기록" onClick={() => onChange("growth")} />
       <Link className="nav-button mt-2 border-t border-slate-100 pt-3" href="/admin"><ShieldCheck size={19} /><span>관리자</span></Link>
     </nav>
   );

@@ -213,6 +213,11 @@ function buildData(
           .some((value) => value?.toLocaleLowerCase("ko").includes(normalizedSearch)),
     )
     .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt));
+  const personalRecords = selectedParticipant
+    ? submissions
+        .filter((submission) => submission.participantId === selectedParticipant.id)
+        .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+    : [];
 
   const todayStatus = selectedParticipant && !sharingOnly
     ? evaluateDailyStatus({
@@ -286,6 +291,7 @@ function buildData(
     },
     calendar,
     feed,
+    personalRecords,
     notices: noticeRows.map((notice) => ({
       id: String(notice.id),
       title: notice.title,
@@ -455,6 +461,7 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
       },
       calendar: [],
       feed: [],
+      personalRecords: [],
       notices: [],
     };
   }
