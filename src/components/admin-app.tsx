@@ -6,6 +6,8 @@ import {
   Award,
   CalendarDays,
   Check,
+  ChevronDown,
+  ChevronUp,
   ClipboardList,
   Download,
   FileClock,
@@ -367,6 +369,7 @@ function Matrix({ data }: { data: AdminData }) {
 
 function Submissions({ data, mutate }: { data: AdminData; mutate: (path: string, method: "POST" | "PATCH" | "DELETE", body: unknown, success: string) => Promise<boolean> }) {
   const [participantId, setParticipantId] = useState(data.participants[0]?.id ?? "");
+  const [manualFormOpen, setManualFormOpen] = useState(false);
   if (!data.challenge) return <Empty text="선택한 기수가 없습니다." />;
   const nowLocal = kstDateTimeLocalValue();
   const earliestLocal = `${data.challenge.startDate}T00:00`;
@@ -399,11 +402,25 @@ function Submissions({ data, mutate }: { data: AdminData; mutate: (path: string,
   }
   return <div className="grid gap-5">
     <section className="surface-card">
-      <div className="flex items-start gap-3">
-        <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-blue-100 text-blue-700"><Plus size={21} /></span>
-        <div><h2 className="text-lg font-black">제출물 수기 등록</h2><p className="mt-1 text-sm leading-6 text-slate-500">카카오톡 등 다른 플랫폼에 기한 내 제출한 기록을 관리자가 대신 등록할 수 있습니다. 실제 제출 시각을 입력하면 완료 기록과 목록 순서에 반영됩니다.</p></div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-blue-100 text-blue-700"><Plus size={21} /></span>
+          <h2 className="text-lg font-black">제출물 수기 등록</h2>
+        </div>
+        <button
+          className="filter-button"
+          type="button"
+          aria-expanded={manualFormOpen}
+          aria-controls="manual-submission-form"
+          onClick={() => setManualFormOpen((open) => !open)}
+        >
+          {manualFormOpen ? <ChevronUp size={17} /> : <ChevronDown size={17} />}
+          {manualFormOpen ? "접기" : "펼치기"}
+        </button>
       </div>
-      {data.participants.length > 0 ? <form className="mt-5 grid gap-3" onSubmit={create}>
+      {manualFormOpen && <div id="manual-submission-form" className="mt-5 border-t border-slate-100 pt-5">
+        <p className="mb-5 text-sm leading-6 text-slate-500">카카오톡 등 다른 플랫폼에 기한 내 제출한 기록을 관리자가 대신 등록할 수 있습니다. 실제 제출 시각을 입력하면 완료 기록과 목록 순서에 반영됩니다.</p>
+        {data.participants.length > 0 ? <form className="grid gap-3" onSubmit={create}>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="grid gap-1.5 text-sm font-bold">참가자<select className="form-input" name="participantId" required value={participantId} onChange={(event) => setParticipantId(event.target.value)}>{data.participants.map((person) => <option key={person.id} value={person.id}>{person.name}{person.affiliation ? ` · ${person.affiliation}` : ""}</option>)}</select></label>
           <label className="grid gap-1.5 text-sm font-bold">인정 제출일시 (한국시간)<input className="form-input" name="submittedAt" type="datetime-local" step="60" min={earliestLocal} max={latestLocal} defaultValue={latestLocal} required /><span className="text-xs font-normal leading-5 text-slate-500">23:00까지 제출한 경우 해당 날짜의 완료로 집계됩니다.</span></label>
@@ -415,6 +432,7 @@ function Submissions({ data, mutate }: { data: AdminData; mutate: (path: string,
         </div>
         <div className="flex justify-end"><SubmitButton>수기로 등록</SubmitButton></div>
       </form> : <p className="mt-5 text-sm font-bold text-slate-500">먼저 이 기수에 참가자를 등록해주세요.</p>}
+      </div>}
     </section>
     <section className="grid gap-3">
       <div className="flex flex-wrap items-end justify-between gap-2 px-1"><div><h2 className="text-lg font-black">등록된 제출물</h2><p className="mt-1 text-sm text-slate-500">인정 제출일시 최신순으로 표시됩니다.</p></div><span className="text-sm font-bold text-slate-500">총 {data.submissions.length}개</span></div>
