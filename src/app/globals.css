@@ -61,7 +61,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px soli
 .activity-level-1 { background: #d5e2f7; }
 .activity-level-2 { background: #a6c0ec; }
 .activity-level-3 { background: #729cdd; }
-.activity-level-4 { background: #2457b5; }
+.activity-level-4 { background: #f4c84a; }
 .activity-today { box-shadow: inset 0 0 0 1.5px #2457e6; }
 .activity-future { background: #fff; box-shadow: inset 0 0 0 1px #e8edf4; cursor: default; }
 .activity-padding { visibility: hidden; }
@@ -69,12 +69,12 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px soli
 .activity-legend > span { display: inline-flex; gap: .25rem; align-items: center; }
 .activity-legend i { display: inline-block; width: .7rem; height: .7rem; border-radius: 3px; }
 .activity-detail { display: flex; align-items: center; gap: .3rem; min-height: 2rem; margin-top: .8rem; font-size: .75rem; line-height: 1.8; color: #64748b; }
-.activity-weekly-chart { display: flex; gap: 12px; min-width: 100%; width: max-content; }
+.activity-bar-chart { display: flex; gap: 12px; min-width: 100%; width: max-content; }
+.activity-monthly-chart { gap: 20px; }
 .activity-bar-column { flex: 1 0 30px; min-width: 30px; text-align: center; }
 .activity-bar-track { display: flex; align-items: flex-end; height: 120px; border-bottom: 1px solid #e2e8f0; }
 .activity-bar-track > span { width: 100%; background: #a6c0ec; border-radius: 4px 4px 0 0; }
 .activity-bar-value, .activity-bar-label { display: block; padding: .3rem 0; font-size: .625rem; color: #64748b; }
-.activity-cumulative { display: block; width: 100%; min-height: 140px; }
 .activity-empty { padding: 3rem 0; text-align: center; font-size: .85rem; color: #64748b; }
 .dashboard-footnote { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem; padding: 1rem 1.5rem; background: #f8fafc; border-top: 1px solid #e8edf4; }
 .dashboard-footnote p { flex: 1 1 260px; font-size: .65rem; line-height: 1.9; color: #64748b; }

@@ -1,15 +1,16 @@
 "use client";
 
-import { ArrowUpRight, CheckCircle2, Link2, Users } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, Users } from "lucide-react";
 import { useId, useState } from "react";
 import { activityWeeks } from "@/lib/challenge-progress";
 import { kstDateKey } from "@/lib/time";
 import type { ActivityDay, Challenge, ChallengeProgress } from "@/lib/types";
 
-const activityLevel = (count: number) => count === 0 ? 0 : count <= 5 ? 1 : count <= 10 ? 2 : count <= 20 ? 3 : 4;
+const activityLevel = (count: number) => count === 0 ? 0 : count <= 8 ? 1 : count <= 14 ? 2 : count <= 19 ? 3 : 4;
 const dateLabel = (date: string) => date.replaceAll("-", ".");
 const shortDate = (date: string) => `${Number(date.slice(5, 7))}/${Number(date.slice(8))}`;
-type ActivityView = "daily" | "weekly" | "cumulative";
+const monthLabel = (month: string) => `${Number(month.slice(0, 4))}.${Number(month.slice(5, 7))}월`;
+type ActivityView = "daily" | "weekly" | "monthly";
 
 export function ChallengeDashboard({ challenge, progress, now, onGrowth }: {
   challenge: Challenge;
@@ -128,17 +129,15 @@ function ActivityChart({ days, today, totalLinks, activeDays }: {
     count: week.reduce((sum, day) => sum + (day?.count ?? 0), 0),
   }));
   const maxWeek = Math.max(1, ...weekly.map((week) => week.count));
-  const cumulative = days.filter((day) => day.date <= today).reduce<Array<{ date: string; count: number }>>((result, day) => {
-    result.push({ date: day.date, count: (result.at(-1)?.count ?? 0) + day.count });
+  const monthly = days.reduce<Array<{ month: string; count: number }>>((result, day) => {
+    const month = day.date.slice(0, 7);
+    const current = result.at(-1);
+    if (current?.month === month) current.count += day.count;
+    else result.push({ month, count: day.count });
     return result;
   }, []);
-  const points = cumulative.map((day, index) => ({
-    x: 24 + (index / Math.max(1, cumulative.length - 1)) * 512,
-    y: 134 - (day.count / Math.max(1, totalLinks)) * 110,
-    ...day,
-  }));
-  const line = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const lastPoint = points.at(-1);
+  const maxMonth = Math.max(1, ...monthly.map((month) => month.count));
+  const currentMonth = today.slice(0, 7);
 
   return (
     <div className="activity-section">
@@ -148,7 +147,7 @@ function ActivityChart({ days, today, totalLinks, activeDays }: {
           <p>참가자들이 <strong>{activeDays}일</strong> 동안 함께 남긴 링크 <strong>{totalLinks.toLocaleString()}개</strong></p>
         </div>
         <div className="activity-view-switch" role="group" aria-label="활동 보기 방식">
-          {([["daily", "일별"], ["weekly", "주별"], ["cumulative", "누적"]] as const).map(([value, label]) => (
+          {([["daily", "일별"], ["weekly", "주별"], ["monthly", "월별"]] as const).map(([value, label]) => (
             <button key={value} type="button" aria-pressed={view === value} aria-controls={chartId} onClick={() => setView(value)}>{label}</button>
           ))}
         </div>
@@ -181,7 +180,7 @@ function ActivityChart({ days, today, totalLinks, activeDays }: {
             </div>
           </div>
           <div className="activity-legend" aria-label="활동 색상 범례">
-            <span>링크 수</span>{["0", "1–5", "6–10", "11–20", "21+"].map((label, level) => <span key={label}><i className={`activity-level-${level}`} />{label}</span>)}<span><i className="activity-future" />예정</span>
+            <span>링크 수</span>{["0", "1–8", "9–14", "15–19", "20+"].map((label, level) => <span key={label}><i className={`activity-level-${level}`} />{label}</span>)}<span><i className="activity-future" />예정</span>
           </div>
           <p className="activity-detail" aria-live="polite">{selected ? `${dateLabel(selected.date)} · ${selected.participantCount}명이 공유한 링크 ${selected.count}개` : "날짜 칸을 누르면 그날의 전체 공유 수와 공유한 참가자 수를 확인할 수 있어요."}</p>
         </>}
@@ -189,7 +188,7 @@ function ActivityChart({ days, today, totalLinks, activeDays }: {
         {view === "weekly" && <>
           <p className="mb-3 text-xs text-slate-500">월요일~일요일 기준 · 참가자 전체의 주별 공유 링크 수</p>
           <div className="activity-scroll" tabIndex={0} role="region" aria-label="주별 링크 수 그래프">
-            <div className="activity-weekly-chart">
+            <div className="activity-bar-chart">
               {weekly.map((week) => <div className="activity-bar-column" key={week.days[0].date} aria-label={`${dateLabel(week.days[0].date)}부터 ${dateLabel(week.days.at(-1)!.date)}까지 ${week.count}개`}>
                 <span className="activity-bar-value">{week.days[0].date > today ? "—" : week.count}</span>
                 <div className="activity-bar-track"><span style={{ height: `${week.count / maxWeek * 100}%` }} /></div>
@@ -199,21 +198,20 @@ function ActivityChart({ days, today, totalLinks, activeDays }: {
           </div>
         </>}
 
-        {view === "cumulative" && <>
-          {points.length > 0 ? <>
-            <svg className="activity-cumulative" viewBox="0 0 560 160" role="img" aria-label={`${dateLabel(cumulative[0].date)}부터 ${dateLabel(cumulative.at(-1)!.date)}까지 누적 공유 ${totalLinks}개`}>
-              <line x1="24" y1="134" x2="536" y2="134" stroke="#e2e8f0" />
-              <line x1="24" y1="24" x2="536" y2="24" stroke="#e2e8f0" strokeDasharray="4 5" />
-              <text x="24" y="15" fontSize="11" fill="#64748b">{Math.max(1, totalLinks)}개</text>
-              <text x="8" y="138" fontSize="11" fill="#64748b">0</text>
-              <polygon points={`24,134 ${line} ${lastPoint!.x},134`} fill="#2457e6" fillOpacity="0.07" />
-              <polyline points={line} fill="none" stroke="#2457e6" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
-              <circle cx={lastPoint!.x} cy={lastPoint!.y} r="4" fill="#2457e6" />
-              <text x="24" y="156" fontSize="11" fill="#64748b">{shortDate(cumulative[0].date)}</text>
-              {cumulative.length > 1 && <text x="536" y="156" textAnchor="end" fontSize="11" fill="#64748b">{shortDate(cumulative.at(-1)!.date)}</text>}
-            </svg>
-            <p className="activity-detail"><Link2 size={14} /> 챌린지 시작부터 함께 쌓은 공유 링크 {totalLinks.toLocaleString()}개</p>
-          </> : <p className="activity-empty">챌린지가 시작되면 누적 기록이 표시돼요.</p>}
+        {view === "monthly" && <>
+          <p className="mb-3 text-xs text-slate-500">달력 월 기준 · 참가자 전체의 월별 공유 링크 수</p>
+          {monthly.length > 0 ? <div className="activity-scroll" tabIndex={0} role="region" aria-label="월별 링크 수 그래프">
+            <div className="activity-bar-chart activity-monthly-chart">
+              {monthly.map((month) => {
+                const isFuture = month.month > currentMonth;
+                return <div className="activity-bar-column" key={month.month} aria-label={`${monthLabel(month.month)}, ${isFuture ? "예정" : `공유 링크 ${month.count}개`}`}>
+                  <span className="activity-bar-value">{isFuture ? "—" : month.count}</span>
+                  <div className="activity-bar-track"><span style={{ height: `${isFuture ? 0 : month.count / maxMonth * 100}%` }} /></div>
+                  <span className="activity-bar-label">{monthLabel(month.month)}</span>
+                </div>;
+              })}
+            </div>
+          </div> : <p className="activity-empty">챌린지 기간의 월별 기록이 표시돼요.</p>}
         </>}
       </div>
       {totalLinks === 0 && today >= (days[0]?.date ?? today) && <p className="mt-3 text-sm text-slate-500">아직 집계 대상 공유가 없어요. 휴일·운영 제외일을 제외한 날, 마감 시간 내에 링크를 남겨보세요.</p>}
