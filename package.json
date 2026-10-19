@@ -15,7 +15,10 @@
     "preview:cloudflare": "vinext build && wrangler dev --config dist/server/wrangler.json",
     "deploy": "vinext-cloudflare deploy --config dist/server/wrangler.json",
     "deploy:dry-run": "vinext build && wrangler deploy --dry-run --config dist/server/wrangler.json",
-    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
+    "review:ai": "node scripts/preview-ai.mjs",
+    "test:ai-db": "node scripts/test-ai-database.mjs",
+    "test:gemini-live": "node scripts/test-gemini-live.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.114.0",
@@ -31,6 +34,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.54.4",
+    "@electric-sql/pglite": "0.3.14",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^26.4.1",
     "@types/react": "^19",

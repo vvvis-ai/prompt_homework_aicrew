@@ -1,0 +1,28 @@
+// Run only against the isolated preview started by npm run review:ai.
+import assert from 'node:assert/strict';
+const base='http://127.0.0.1:3100';
+const participant=String(Math.floor(Math.random()*1000000)+100000);
+const headers={'Content-Type':'application/json','x-ai-participant':participant,Origin:base};
+const snapshot=async()=>{const r=await fetch(base+'/api/ai',{headers});assert.equal(r.status,200);return r.json();};
+assert.equal((await snapshot()).demo,true,'Refusing writes outside local simulated preview');
+let checks=1;
+const check=(a,b)=>{assert.deepEqual(a,b);checks++;};
+const post=(path,input,extra={})=>fetch(base+path,{method:'POST',headers:{...headers,...extra},body:JSON.stringify(input)});
+check((await fetch(base+'/api/admin/ai')).status,401);
+check((await post('/api/internal/ai-cleanup',{})).status,401);
+check((await post('/api/ai',{action:'reset'},{Origin:'https://other.invalid'})).status,403);
+check((await post('/api/ai/generate',{requestId:crypto.randomUUID(),kind:'chat',text:'x'.repeat(5001)})).status,400);
+check((await post('/api/ai/generate',{requestId:crypto.randomUUID(),kind:'chat',text:'password=sample-private-test-value',privacyAcknowledged:true})).status,422);
+check((await snapshot()).requests.length,0);
+const input={requestId:crypto.randomUUID(),kind:'chat',text:'회의 준비 프롬프트를 작성해주세요'};
+const response=await post('/api/ai/generate',input);check(response.status,200);
+const frames=(await response.text()).trim().split('\n').map(line=>JSON.parse(line));
+check(frames.filter(f=>f.type==='done').length,1);check(frames.filter(f=>f.type==='preview').length>1,true);
+const restored=await snapshot();check(restored.state.rooms.length,1);check(restored.requests.filter(r=>r.status==='success').length,1);
+const replay=await post('/api/ai/generate',input);check((await replay.json()).replay,true);
+check((await snapshot()).requests.filter(r=>r.status==='success').length,1);
+const cancelId=crypto.randomUUID();const stream=await post('/api/ai/generate',{requestId:cancelId,kind:'chat',text:'취소 확인용 프롬프트'});
+check((await post('/api/ai/cancel',{requestId:cancelId})).status,200);
+await stream.text();const cancelled=(await snapshot()).requests.find(r=>r.id===cancelId);check(cancelled.status,'cancelled');
+check((await snapshot()).requests.filter(r=>r.status==='success').length,1);
+console.log('AI local HTTP checks passed: '+checks+' (simulated preview only)');

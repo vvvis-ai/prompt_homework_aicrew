@@ -26,6 +26,7 @@ import {
 import Link from "next/link";
 import type { AdminData, AdminParticipant, DailyStatus, PaymentStatus, Submission } from "@/lib/types";
 import { HabitOverview, MissionManager } from "./habit-admin";
+import { AiAdmin } from "./ai-admin";
 import { kstDateKey, kstDateTimeLocalValue, kstLocalDateTimeToIso } from "@/lib/time";
 
 type Gate = "loading" | "login" | "operator" | "ready";
@@ -250,7 +251,7 @@ export function AdminApp() {
             {tab === "participants" && <Participants data={data} mutate={mutate} />}
             {tab === "matrix" && <Matrix data={data} />}
             {tab === "submissions" && <Submissions key={data.challenge?.id} data={data} mutate={mutate} />}
-            {tab === "settings" && <div className="grid gap-5"><MissionManager key={data.challenge?.id} data={data} /><SettingsPanel data={data} mutate={mutate} /></div>}
+            {tab === "settings" && <div className="grid gap-5"><AiAdmin /><MissionManager key={data.challenge?.id} data={data} /><SettingsPanel data={data} mutate={mutate} /></div>}
             {tab === "audit" && <Audit data={data} />}
           </div>
         </section>

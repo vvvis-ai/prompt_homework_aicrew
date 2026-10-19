@@ -30,11 +30,12 @@ import { canParticipantEdit, formatKstTime, formatRemainingUntilCutoff, kstDateK
 import { daysUntil } from "@/lib/business";
 import { getSubmissionUrlError } from "@/lib/url";
 import type { AppData, CalendarDay, DailyStatus, Submission } from "@/lib/types";
-import { MissionCard, ReminderCard, WeekRecord } from "./habit-cards";
+import { ReminderCard, WeekRecord } from "./habit-cards";
 import { ParticipantDirectory } from "./participant-directory";
 import { ShareLinkHelp } from "./share-link-help";
 import { ChallengeDashboard } from "./challenge-dashboard";
 import { challengeTimeline } from "@/lib/challenge-progress";
+import { AiAssistant } from "./ai-assistant";
 
 type Tab = "home" | "submit" | "feed" | "growth";
 type PaginationItem = number | `ellipsis-${number}`;
@@ -437,6 +438,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
           <section className="min-w-0">
             {tab === "home" && (
               <div className="grid gap-5">
+                <AiAssistant key={participantId} participantId={participantId} />
                 <PenaltyNotice notice={data.penaltyNotice} now={data.now} />
                 {data.notices[0] && (
                   <article className="notice-card">
@@ -470,7 +472,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                 </section>
                 </>}
                 {!data.sharingOnly && <>
-                <MissionCard data={data} onSubmit={() => setTab("submit")} />
+
                 <WeekRecord days={data.habit.week} />
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <StatCard label="완료" value={data.summary.completedDays} suffix="일" icon={<CheckCircle2 size={19} />} />
