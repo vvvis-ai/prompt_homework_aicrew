@@ -43,6 +43,8 @@ type ParticipantRow = {
   is_active: boolean;
 };
 type SubmissionRow = {
+  html_file_name?: string | null;
+  updated_at?: string;
   id: number | string;
   participant_id: number | string;
   title: string | null;
@@ -124,7 +126,9 @@ function buildData(
     participantId: String(submission.participant_id),
     participantName: participantName.get(String(submission.participant_id)) ?? "참가자",
     title: submission.title,
-    url: submission.url,
+    url: submission.html_file_name ? `/submissions/${submission.id}` : submission.url,
+    htmlFileName: submission.html_file_name ?? null,
+    htmlUpdatedAt: submission.html_file_name ? submission.updated_at ?? submission.submitted_at : null,
     description: submission.description,
     submittedAt: submission.submitted_at,
     isFeatured: submission.is_featured,
@@ -478,7 +482,7 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
   const [{ data: participants, error: participantsError }, { data: submissions, error: submissionsError }, { data: exemptions, error: exemptionsError }, { data: excluded, error: excludedError }, { data: notices, error: noticesError }] =
     await Promise.all([
       db.from("participants").select("id,name,affiliation,joined_at,left_at,is_active").eq("challenge_id", challengeId).order("name"),
-      allRows((from, to) => db.from("submissions").select("id,participant_id,title,url,description,submitted_at,is_featured").in("challenge_id", [challengeId, ...sharingChallengeIds]).gte("submitted_at", new Date(`${challenge.start_date}T00:00:00+09:00`).toISOString()).lte("submitted_at", now.toISOString()).order("submitted_at").order("id").range(from, to)),
+      allRows((from, to) => db.from("submissions").select("id,participant_id,title,url,description,submitted_at,is_featured,html_file_name,updated_at").in("challenge_id", [challengeId, ...sharingChallengeIds]).gte("submitted_at", new Date(`${challenge.start_date}T00:00:00+09:00`).toISOString()).lte("submitted_at", now.toISOString()).order("submitted_at").order("id").range(from, to)),
       allRows((from, to) => db.from("exemptions").select("participant_id,exemption_date").eq("challenge_id", challengeId).order("id").range(from, to)),
       db.from("excluded_dates").select("excluded_date").eq("challenge_id", challengeId),
       db.from("notices").select("id,title,content,is_pinned,created_at").eq("challenge_id", challengeId).order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),

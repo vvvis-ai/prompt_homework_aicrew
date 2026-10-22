@@ -4,6 +4,8 @@ import { isVoluntarySharingChallenge } from "@/lib/participation";
 import { getSubmissionUrlError, normalizeUrl } from "@/lib/url";
 import { getSupabaseAdmin, isDemoMode } from "@/server/supabase";
 import { z } from "zod";
+import { readSubmissionInput, SubmissionInputError } from "@/server/submission-input";
+import { submissionDetailUrl } from "@/lib/html-submission";
 
 export const runtime = "nodejs";
 
@@ -16,20 +18,27 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
-  const parsed = schema.safeParse(await request.json().catch(() => null));
+  let input;
+  try { input = await readSubmissionInput(request); }
+  catch (error) {
+    return Response.json({ error: error instanceof SubmissionInputError ? error.message : "입력 내용을 확인해주세요." }, { status: error instanceof SubmissionInputError ? error.status : 400 });
+  }
+  const html = input.html;
+  const parsed = schema.safeParse(html ? { ...input.fields, url: `html:${crypto.randomUUID()}` } : input.fields);
   if (!parsed.success) {
     return Response.json({ error: "필수 입력값과 형식을 확인해주세요." }, { status: 400 });
   }
-  const urlError = getSubmissionUrlError(parsed.data.url);
+  const urlError = html ? null : getSubmissionUrlError(parsed.data.url);
   if (urlError) return Response.json({ error: urlError }, { status: 400 });
   let normalizedUrl: string;
   try {
-    normalizedUrl = normalizeUrl(parsed.data.url);
+    normalizedUrl = html ? parsed.data.url : normalizeUrl(parsed.data.url);
   } catch {
     return Response.json({ error: "http 또는 https로 시작하는 정상적인 링크를 입력해주세요." }, { status: 400 });
   }
   const now = new Date();
   if (isDemoMode()) {
+    if (html) return Response.json({ error: "HTML 업로드는 DB가 연결된 환경에서 저장할 수 있습니다. 현재는 체험 모드입니다." }, { status: 503 });
     return Response.json({
       success: true,
       onTime: isSubmissionOnTime(now),
@@ -69,6 +78,7 @@ export async function POST(request: Request) {
         normalized_url: normalizedUrl,
         description: parsed.data.description || null,
         edit_password_hash: passwordHash,
+        ...(html ? { html_file_name: html.name, html_content: html.content } : {}),
       })
       .select("id,submitted_at")
       .single();
@@ -80,10 +90,10 @@ export async function POST(request: Request) {
       success: true,
       sharingOnly,
       onTime: !sharingOnly && isSubmissionOnTime(data.submitted_at),
-      submission: { id: String(data.id), submittedAt: data.submitted_at, normalizedUrl },
+      submission: { id: String(data.id), submittedAt: data.submitted_at, normalizedUrl, url: html ? submissionDetailUrl(data.id) : parsed.data.url },
     });
   } catch (error) {
     console.error("submission create error", error);
-    return Response.json({ error: "링크를 등록하지 못했습니다." }, { status: 500 });
+    return Response.json({ error: "제출물을 등록하지 못했습니다." }, { status: 500 });
   }
 }

@@ -170,7 +170,7 @@ export async function getAdminData(
   const challengeIdNumber = chosen.id;
   const results = await Promise.all([
     db.from("participants").select("id,name,affiliation,joined_at,left_at,paid_amount,paid_at,refunded_amount,is_active").eq("challenge_id", challengeIdNumber).order("name"),
-    db.from("submissions").select("id,participant_id,title,url,description,submitted_at,is_featured").eq("challenge_id", challengeIdNumber).order("submitted_at", { ascending: false }),
+    db.from("submissions").select("id,participant_id,title,url,description,submitted_at,is_featured,html_file_name,updated_at").eq("challenge_id", challengeIdNumber).order("submitted_at", { ascending: false }),
     db.from("exemptions").select("id,participant_id,exemption_date,reason").eq("challenge_id", challengeIdNumber).order("exemption_date", { ascending: false }),
     db.from("excluded_dates").select("id,excluded_date,reason,source").eq("challenge_id", challengeIdNumber).order("excluded_date"),
     db.from("penalty_rates").select("id,amount,effective_from").eq("challenge_id", challengeIdNumber).order("effective_from"),
@@ -209,7 +209,9 @@ export async function getAdminData(
     participantId: String(row.participant_id),
     participantName: participantName.get(row.participant_id) ?? "참가자",
     title: row.title,
-    url: row.url,
+    url: row.html_file_name ? `/submissions/${row.id}` : row.url,
+    htmlFileName: row.html_file_name ?? null,
+    htmlUpdatedAt: row.html_file_name ? row.updated_at ?? row.submitted_at : null,
     description: row.description,
     submittedAt: row.submitted_at,
     isFeatured: row.is_featured,

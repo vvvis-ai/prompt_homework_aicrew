@@ -35,6 +35,8 @@ import { ParticipantDirectory } from "./participant-directory";
 import { ShareLinkHelp } from "./share-link-help";
 import { ChallengeDashboard } from "./challenge-dashboard";
 import { challengeTimeline } from "@/lib/challenge-progress";
+import { HtmlFileInput } from "./html-file-input";
+import { HtmlSubmissionPreview } from "./html-submission-preview";
 import { AiAssistant } from "./ai-assistant";
 
 type Tab = "home" | "submit" | "feed" | "growth";
@@ -133,6 +135,9 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   const [hydrated, setHydrated] = useState(false);
   const [receipt, setReceipt] = useState<{ onTime: boolean; url: string } | null>(null);
   const [remaining, setRemaining] = useState<string | null>(null);
+  const [submissionKind, setSubmissionKind] = useState<"link" | "html">("link");
+  const [htmlFile, setHtmlFile] = useState<File | null>(null);
+  const [editHtmlFile, setEditHtmlFile] = useState<File | null>(null);
   const [editing, setEditing] = useState<Submission | null>(null);
   const [submissionUrlError, setSubmissionUrlError] = useState<string | null>(null);
   const [editUrlError, setEditUrlError] = useState<string | null>(null);
@@ -251,7 +256,8 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
     event.preventDefault();
     const form = event.currentTarget;
     const formData = new FormData(form);
-    const urlError = getSubmissionUrlError(String(formData.get("url") ?? ""));
+    const urlError = submissionKind === "html" ? null : getSubmissionUrlError(String(formData.get("url") ?? ""));
+    if (submissionKind === "html" && !htmlFile) { setToast("HTML 파일을 선택해주세요."); return; }
     setSubmissionUrlError(urlError);
     if (urlError) {
       form.querySelector<HTMLInputElement>('input[name="url"]')?.focus();
@@ -260,10 +266,12 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
     setBusy(true);
     setToast("");
     try {
+    formData.set("participantId", participantId);
+    if (htmlFile && submissionKind === "html") formData.set("file", htmlFile);
     const response = await fetch("/api/submissions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      headers: submissionKind === "html" ? undefined : { "Content-Type": "application/json" },
+      body: submissionKind === "html" ? formData : JSON.stringify({
         participantId,
         title: formData.get("title"),
         url: formData.get("url"),
@@ -271,23 +279,24 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
         password: formData.get("password"),
       }),
     });
-    const result = (await response.json()) as { error?: string; onTime?: boolean };
+    const result = (await response.json()) as { error?: string; onTime?: boolean; submission?: { url?: string } };
     if (!response.ok) {
       setToast(result.error ?? "링크를 등록하지 못했습니다.");
       return;
     }
     form.reset();
-    setReceipt({ onTime: Boolean(result.onTime), url: String(formData.get("url")) });
+    setHtmlFile(null);
+    setReceipt({ onTime: Boolean(result.onTime), url: result.submission?.url ?? String(formData.get("url")) });
     setToast(
       data.sharingOnly ? "✅ 프롬프트를 공유했습니다."
         : result.onTime
         ? "✅ 오늘 숙제를 완료했습니다."
-        : "✅ 링크가 등록되었습니다. 마감시간 이후 등록되어 오늘 숙제 완료에는 반영되지 않습니다.",
+        : "✅ 제출물이 등록되었습니다. 마감시간 이후 등록되어 오늘 숙제 완료에는 반영되지 않습니다.",
     );
     try {
       await refresh();
     } catch {
-      setToast("✅ 링크가 등록되었습니다. 제출 현황을 불러오지 못했으니 잠시 후 새로고침해 주세요.");
+      setToast("✅ 제출물이 등록되었습니다. 제출 현황을 불러오지 못했으니 잠시 후 새로고침해 주세요.");
     }
     } catch { setToast("연결이 원활하지 않습니다. 입력 내용을 유지했어요. 제출 현황을 확인한 뒤 다시 시도해주세요."); }
     finally { setBusy(false); }
@@ -297,7 +306,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
     event.preventDefault();
     if (!editing) return;
     const formData = new FormData(event.currentTarget);
-    const urlError = getSubmissionUrlError(String(formData.get("url") ?? ""));
+    const urlError = editing.htmlFileName ? null : getSubmissionUrlError(String(formData.get("url") ?? ""));
     setEditUrlError(urlError);
     if (urlError) {
       event.currentTarget.querySelector<HTMLInputElement>('input[name="url"]')?.focus();
@@ -305,14 +314,16 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
     }
     setBusy(true);
     try {
+      formData.set("participantId", participantId);
+      if (editHtmlFile) formData.set("file", editHtmlFile);
       const response = await fetch(`/api/submissions/${editing.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        headers: editHtmlFile ? undefined : { "Content-Type": "application/json" },
+        body: editHtmlFile ? formData : JSON.stringify({
           participantId,
           password: formData.get("password"),
           title: formData.get("title"),
-          url: formData.get("url"),
+          url: editing.htmlFileName ? undefined : formData.get("url"),
           description: formData.get("description"),
         }),
       });
@@ -519,19 +530,23 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                 <div className="mb-6 flex items-start justify-between gap-4">
                   <div>
                     <p className="text-sm font-bold text-blue-700">{displayDate(kstDateKey(data.now))} · {selectedParticipant?.name}</p>
-                    <h1 className="mt-1 text-2xl font-black">오늘 써본 AI, 링크로 남겨요</h1>
+                    <h1 className="mt-1 text-2xl font-black">오늘 써본 AI, 링크나 웹페이지로 남겨요</h1>
                     <p className="mt-2 text-sm leading-6 text-slate-600">짧은 질문도, 기대와 달랐던 답도 괜찮아요. 직접 써봤다면 충분해요.</p>
                     <p className="mt-2 text-sm font-semibold text-slate-500">{data.sharingOnly ? "자율 공유 · 미등록 차감 없음" : "오늘 숙제 제출 마감 23:00"}</p>
                   </div>
                   <span className="grid size-12 place-items-center rounded-2xl bg-lime-100 text-lime-800"><Plus size={25} /></span>
                 </div>
-                {receipt && <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status"><strong>{data.sharingOnly ? "프롬프트 공유 완료" : receipt.onTime ? "오늘 숙제 인정 완료" : "링크 공유 완료 · 오늘 숙제 인정에는 미반영"}</strong><a className="mt-2 block break-all text-sm text-blue-700 underline" href={receipt.url} target="_blank" rel="noopener noreferrer">등록한 링크 확인</a><p className="mt-2 text-xs text-slate-600">공유 탭에서 등록 내용을 확인할 수 있어요. 수정·삭제는 등록 당일 23:00까지 가능합니다.</p><button className="secondary-button mt-3" type="button" onClick={() => setTab("home")}>내 현황 보기<ArrowRight size={17} /></button></div>}
+                {receipt && <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4" role="status"><strong>{data.sharingOnly ? "프롬프트 공유 완료" : receipt.onTime ? "오늘 숙제 인정 완료" : "링크 공유 완료 · 오늘 숙제 인정에는 미반영"}</strong><a className="mt-2 block break-all text-sm text-blue-700 underline" href={receipt.url} target="_blank" rel="noopener noreferrer">등록한 제출물 확인</a><p className="mt-2 text-xs text-slate-600">공유 탭에서 등록 내용을 확인할 수 있어요. 수정·삭제는 등록 당일 23:00까지 가능합니다.</p><button className="secondary-button mt-3" type="button" onClick={() => setTab("home")}>내 현황 보기<ArrowRight size={17} /></button></div>}
                 <form className="grid gap-5" onSubmit={onSubmit}>
-                  <div className="grid gap-2">
+                  <div className="flex gap-2" role="group" aria-label="등록 방식">
+                    <button type="button" className={`filter-button ${submissionKind === "link" ? "filter-active" : ""}`} aria-pressed={submissionKind === "link"} disabled={busy} onClick={() => setSubmissionKind("link")}>링크 등록</button>
+                    <button type="button" className={`filter-button ${submissionKind === "html" ? "filter-active" : ""}`} aria-pressed={submissionKind === "html"} disabled={busy} onClick={() => setSubmissionKind("html")}>HTML 파일 업로드</button>
+                  </div>
+                  {submissionKind === "html" ? <HtmlFileInput file={htmlFile} onChange={setHtmlFile} disabled={busy} /> : <div className="grid gap-2">
                     <label htmlFor="submission-url" className="font-extrabold">AI 활용 링크 <span className="text-red-500">*</span></label>
                     <input id="submission-url" className="form-input" name="url" type="url" required maxLength={2048} placeholder="https://chatgpt.com/share/..." aria-invalid={Boolean(submissionUrlError)} aria-describedby={submissionUrlError ? "submission-url-help submission-url-error" : "submission-url-help"} onChange={() => setSubmissionUrlError(null)} />
                     <ShareLinkHelp id="submission-url-help" errorId="submission-url-error" error={submissionUrlError} />
-                  </div>
+                  </div>}
                   <Field label="제목" hint="선택사항">
                     <input className="form-input" name="title" maxLength={120} placeholder="예: 회의자료 AI로 요약하기" />
                   </Field>
@@ -545,7 +560,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     <p>{data.sharingOnly ? "※ 자율 공유는 시간에 관계없이 등록할 수 있고, 미등록 차감이 없습니다." : "※ 숙제 제출 인정 마감은 23:00입니다."}</p>
                     <p>※ 수정·삭제는 등록 당일 23:00까지 가능합니다.</p>
                   </div>
-                  <button className="primary-button" disabled={busy} type="submit">{busy ? "등록 중..." : "링크 등록하기"} <ArrowRight size={19} /></button>
+                  <button className="primary-button" disabled={busy} type="submit">{busy ? "등록 중..." : submissionKind === "html" ? "HTML 웹페이지 등록하기" : "링크 등록하기"} <ArrowRight size={19} /></button>
                 </form>
               </section>
             )}
@@ -614,12 +629,13 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                         <Bookmark size={20} fill={bookmarks.includes(submission.id) ? "currentColor" : "none"} />
                       </button>
                     </div>
+                    <HtmlSubmissionPreview submission={submission} />
                     <a className="link-chip mt-4" href={submission.url} target="_blank" rel="noopener noreferrer">
-                      <Link2 size={17} /><span>{hostLabel(submission.url)}</span><ExternalLink size={15} />
+                      <Link2 size={17} /><span>{submission.htmlFileName ? "HTML 웹페이지 상세 보기" : hostLabel(submission.url)}</span><ExternalLink size={15} />
                     </a>
                     {submission.participantId === participantId && canParticipantEdit(submission.submittedAt, data.now) && (
                       <div className="mt-4 flex gap-2 border-t border-slate-100 pt-3">
-                        <button className="small-action" type="button" onClick={() => { setEditUrlError(null); setEditing(submission); }}><Pencil size={15} /> 수정·삭제</button>
+                        <button className="small-action" type="button" onClick={() => { setEditUrlError(null); setEditHtmlFile(null); setEditing(submission); }}><Pencil size={15} /> 수정·삭제</button>
                         <span className="ml-auto self-center text-xs font-semibold text-slate-400">오늘 등록한 글만 가능</span>
                       </div>
                     )}
@@ -689,16 +705,17 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                                 <span className="text-sm font-semibold text-slate-500">{displayDate(kstDateKey(submission.submittedAt))} {formatKstTime(submission.submittedAt)}</span>
                                 {submission.isFeatured && <span className="featured-badge">✨ 따라 해봐요</span>}
                               </div>
-                              <h3 className="mt-3 text-lg font-black tracking-tight">{submission.title || hostLabel(submission.url)}</h3>
+                              <h3 className="mt-3 text-lg font-black tracking-tight">{submission.title || submission.htmlFileName || hostLabel(submission.url)}</h3>
                               {submission.description && <p className="mt-2 leading-7 text-slate-600">{submission.description}</p>}
                             </div>
                           </div>
+                          <HtmlSubmissionPreview submission={submission} />
                           <a className="link-chip mt-4" href={submission.url} target="_blank" rel="noopener noreferrer">
-                            <Link2 size={17} /><span>{hostLabel(submission.url)}</span><ExternalLink size={15} />
+                            <Link2 size={17} /><span>{submission.htmlFileName ? "HTML 웹페이지 상세 보기" : hostLabel(submission.url)}</span><ExternalLink size={15} />
                           </a>
                           {canParticipantEdit(submission.submittedAt, data.now) && (
                             <div className="mt-4 flex gap-2 border-t border-slate-100 pt-3">
-                              <button className="small-action" type="button" onClick={() => { setEditUrlError(null); setEditing(submission); }}><Pencil size={15} /> 수정·삭제</button>
+                              <button className="small-action" type="button" onClick={() => { setEditUrlError(null); setEditHtmlFile(null); setEditing(submission); }}><Pencil size={15} /> 수정·삭제</button>
                               <span className="ml-auto self-center text-xs font-semibold text-slate-400">오늘 등록한 글만 가능</span>
                             </div>
                           )}
@@ -750,7 +767,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
               {selectedDay.submissions.map((submission) => (
                 <a className="participant-button" href={submission.url} target="_blank" rel="noopener noreferrer" key={submission.id}>
                   <Link2 size={18} className="text-blue-600" />
-                  <span className="min-w-0 flex-1 truncate font-bold">{submission.title || hostLabel(submission.url)}</span>
+                  <span className="min-w-0 flex-1 truncate font-bold">{submission.title || submission.htmlFileName || hostLabel(submission.url)}</span>
                   <ExternalLink size={16} />
                 </a>
               ))}
@@ -764,13 +781,13 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
           <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="submission-edit-title" onMouseDown={(event) => event.stopPropagation()}>
             <button className="absolute right-4 top-4 rounded-full p-2 hover:bg-slate-100" type="button" aria-label="닫기" disabled={busy} onClick={() => setEditing(null)}><X size={20} /></button>
             <p className="text-sm font-bold text-blue-700">{displayDate(kstDateKey(editing.submittedAt))} 등록</p>
-            <h2 className="mt-1 text-xl font-black" id="submission-edit-title">등록한 링크 수정</h2>
+            <h2 className="mt-1 text-xl font-black" id="submission-edit-title">등록한 제출물 수정</h2>
             <form className="mt-5 grid gap-4" onSubmit={saveEdit}>
-              <div className="grid gap-2">
+              {editing.htmlFileName ? <><p className="text-sm text-slate-600">현재 파일: {editing.htmlFileName}</p><HtmlFileInput file={editHtmlFile} onChange={setEditHtmlFile} disabled={busy} optional /></> : <div className="grid gap-2">
                 <label htmlFor="edit-url" className="font-extrabold">AI 활용 링크 <span className="text-red-500">*</span></label>
                 <input id="edit-url" className="form-input" name="url" type="url" required maxLength={2048} defaultValue={editing.url} aria-invalid={Boolean(editUrlError)} aria-describedby={editUrlError ? "edit-url-help edit-url-error" : "edit-url-help"} onChange={() => setEditUrlError(null)} />
                 <ShareLinkHelp id="edit-url-help" errorId="edit-url-error" error={editUrlError} />
-              </div>
+              </div>}
               <Field label="제목" hint="선택사항">
                 <input className="form-input" name="title" maxLength={120} defaultValue={editing.title ?? ""} />
               </Field>
@@ -865,7 +882,7 @@ function DesktopNav({ tab, onChange }: { tab: Tab; onChange: (tab: Tab) => void 
   return (
     <nav className="mt-4 grid gap-1 rounded-3xl border border-slate-200 bg-white/90 p-2">
       <NavButton active={tab === "home"} icon={<Home size={19} />} label="내 현황" onClick={() => onChange("home")} />
-      <NavButton active={tab === "submit"} icon={<Plus size={20} />} label="링크 등록" onClick={() => onChange("submit")} />
+      <NavButton active={tab === "submit"} icon={<Plus size={20} />} label="숙제 등록" onClick={() => onChange("submit")} />
       <NavButton active={tab === "feed"} icon={<Link2 size={19} />} label="공유 피드" onClick={() => onChange("feed")} />
       <NavButton active={tab === "growth"} icon={<Sparkles size={19} />} label="성장 기록" onClick={() => onChange("growth")} />
       <Link className="nav-button mt-2 border-t border-slate-100 pt-3" href="/admin"><ShieldCheck size={19} /><span>관리자</span></Link>

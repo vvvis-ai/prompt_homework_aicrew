@@ -26,6 +26,8 @@ export type Participant = {
 };
 
 export type Submission = {
+  htmlFileName?: string | null;
+  htmlUpdatedAt?: string | null;
   id: string;
   participantId: string;
   participantName: string;

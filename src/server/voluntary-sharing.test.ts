@@ -64,6 +64,21 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("종료 기수 자율 공유", () => {
+  it("HTML 제출도 숙제에 반영하고 피드에는 원문 대신 파일명과 갱신 시각을 전달한다", async () => {
+    const body = new FormData();
+    body.set("participantId", "10"); body.set("password", "test-password");
+    body.set("file", new File(["<html><h1>My homework</h1></html>"], "homework.html"));
+    const response = await POST(new Request("http://localhost/api/submissions", { method: "POST", body }));
+    expect(response.status).toBe(200);
+    mocks.tables.submissions[0].updated_at = "2026-09-15T12:30:00Z";
+    const data = await getAppData({ participantId: "10", date: "all" });
+    expect(data.todayStatus).toBe("completed");
+    expect(data.feed[0]).toMatchObject({ htmlFileName: "homework.html", url: "/submissions/999", htmlUpdatedAt: "2026-09-15T12:30:00Z" });
+    expect(JSON.stringify(data)).not.toContain("<html>");
+    expect(JSON.stringify(data)).not.toContain("html_content");
+    expect(data.personalRecords).toHaveLength(1);
+  });
+
   it("1기 이름 선택을 유지하고 숙제·차감·미제출 알림 대상에서 제외한다", async () => {
     const data = await getAppData({ participantId: "20" });
     expect(data.participantGroups[1].members[0].selectable).toBe(true);

@@ -45,9 +45,9 @@ export type Database = {
         { id?: number; challenge_id: number; name: string; affiliation?: string; joined_at: string; left_at?: string | null; paid_amount?: number; paid_at?: string | null; refunded_amount?: number | null; is_active?: boolean; created_at?: string; updated_at?: string }
       >;
       submissions: Table<
-        { id: number; challenge_id: number; participant_id: number; title: string | null; url: string; normalized_url: string; description: string | null; edit_password_hash: string; submitted_at: string; is_featured: boolean; created_at: string; updated_at: string },
-        { id?: number; challenge_id: number; participant_id: number; title?: string | null; url: string; normalized_url: string; description?: string | null; edit_password_hash: string; submitted_at?: string; is_featured?: boolean; created_at?: string; updated_at?: string },
-        { title?: string | null; url?: string; normalized_url?: string; description?: string | null; is_featured?: boolean; updated_at?: string }
+        { html_file_name: string | null; html_content: string | null; id: number; challenge_id: number; participant_id: number; title: string | null; url: string; normalized_url: string; description: string | null; edit_password_hash: string; submitted_at: string; is_featured: boolean; created_at: string; updated_at: string },
+        { id?: number; challenge_id: number; participant_id: number; html_file_name?: string | null; html_content?: string | null; title?: string | null; url: string; normalized_url: string; description?: string | null; edit_password_hash: string; submitted_at?: string; is_featured?: boolean; created_at?: string; updated_at?: string },
+        { html_file_name?: string | null; html_content?: string | null; title?: string | null; url?: string; normalized_url?: string; description?: string | null; is_featured?: boolean; updated_at?: string }
       >;
       exemptions: Table<
         { id: number; challenge_id: number; participant_id: number; exemption_date: string; reason: string; operator_id: number; created_at: string },

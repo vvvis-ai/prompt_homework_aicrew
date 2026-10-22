@@ -24,6 +24,7 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
+import { HtmlSubmissionPreview } from "./html-submission-preview";
 import type { AdminData, AdminParticipant, DailyStatus, PaymentStatus, Submission } from "@/lib/types";
 import { HabitOverview, MissionManager } from "./habit-admin";
 import { AiAdmin } from "./ai-admin";
@@ -393,7 +394,7 @@ function Submissions({ data, mutate }: { data: AdminData; mutate: (path: string,
   }
   async function edit(item: Submission) {
     const title = window.prompt("제목 (선택)", item.title ?? ""); if (title === null) return;
-    const url = window.prompt("URL", item.url); if (!url) return;
+    const url = item.htmlFileName ? undefined : window.prompt("URL", item.url); if (!item.htmlFileName && !url) return;
     const description = window.prompt("설명 (선택)", item.description ?? ""); if (description === null) return;
     await mutate(`/api/admin/submissions/${item.id}`, "PATCH", { challengeId: data.challenge!.id, title: title || null, url, description: description || null }, "제출물을 수정했습니다. 최초 제출 시각은 그대로 보존됩니다.");
   }
@@ -437,7 +438,7 @@ function Submissions({ data, mutate }: { data: AdminData; mutate: (path: string,
     </section>
     <section className="grid gap-3">
       <div className="flex flex-wrap items-end justify-between gap-2 px-1"><div><h2 className="text-lg font-black">등록된 제출물</h2><p className="mt-1 text-sm text-slate-500">인정 제출일시 최신순으로 표시됩니다.</p></div><span className="text-sm font-bold text-slate-500">총 {data.submissions.length}개</span></div>
-      {data.submissions.map((item) => <article className="feed-card" key={item.id}><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2"><span className="avatar-mini">{item.participantName.slice(0, 1)}</span><strong>{item.participantName}</strong>{item.isFeatured && <span className="featured-badge">추천</span>}</div><h3 className="mt-3 font-black">{item.title || "제목 없는 프롬프트"}</h3><a className="link-chip mt-2" href={item.url} target="_blank" rel="noreferrer"><Link2 size={15} /><span>{item.url}</span></a><p className="mt-2 text-sm text-slate-600">{item.description}</p><time className="mt-3 block text-xs font-bold text-slate-400">인정 제출 {new Date(item.submittedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</time></div><div className="flex gap-1"><button className="icon-button" title="수정" onClick={() => void edit(item)}><Pencil size={16} /></button><button className={`icon-button ${item.isFeatured ? "!bg-amber-100 !text-amber-700" : ""}`} title="추천" onClick={() => void mutate(`/api/admin/submissions/${item.id}/featured`, "PATCH", { challengeId: data.challenge!.id, isFeatured: !item.isFeatured }, item.isFeatured ? "추천을 해제했습니다." : "추천 프롬프트로 표시했습니다.")}><Star size={16} fill={item.isFeatured ? "currentColor" : "none"} /></button><button className="icon-button !text-rose-600" title="삭제" onClick={() => void remove(item)}><Trash2 size={16} /></button></div></div></article>)}
+      {data.submissions.map((item) => <article className="feed-card" key={item.id}><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="avatar-mini">{item.participantName.slice(0, 1)}</span><strong>{item.participantName}</strong>{item.isFeatured && <span className="featured-badge">추천</span>}</div><h3 className="mt-3 font-black">{item.title || "제목 없는 프롬프트"}</h3><HtmlSubmissionPreview submission={item} /><a className="link-chip mt-2" href={item.url} target="_blank" rel="noreferrer"><Link2 size={15} /><span>{item.htmlFileName ? "HTML 웹페이지 상세 보기" : item.url}</span></a><p className="mt-2 text-sm text-slate-600">{item.description}</p><time className="mt-3 block text-xs font-bold text-slate-400">인정 제출 {new Date(item.submittedAt).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" })}</time></div><div className="flex gap-1"><button className="icon-button" title="수정" onClick={() => void edit(item)}><Pencil size={16} /></button><button className={`icon-button ${item.isFeatured ? "!bg-amber-100 !text-amber-700" : ""}`} title="추천" onClick={() => void mutate(`/api/admin/submissions/${item.id}/featured`, "PATCH", { challengeId: data.challenge!.id, isFeatured: !item.isFeatured }, item.isFeatured ? "추천을 해제했습니다." : "추천 프롬프트로 표시했습니다.")}><Star size={16} fill={item.isFeatured ? "currentColor" : "none"} /></button><button className="icon-button !text-rose-600" title="삭제" onClick={() => void remove(item)}><Trash2 size={16} /></button></div></div></article>)}
       {data.submissions.length === 0 && <Empty text="이 기수의 제출물이 없습니다." />}
     </section>
   </div>;

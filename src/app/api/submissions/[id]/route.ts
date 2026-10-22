@@ -4,6 +4,7 @@ import { getSubmissionUrlError, normalizeUrl } from "@/lib/url";
 import { getSupabaseAdmin, isDemoMode } from "@/server/supabase";
 import type { Database } from "@/server/database.types";
 import { z } from "zod";
+import { readSubmissionInput, SubmissionInputError } from "@/server/submission-input";
 
 export const runtime = "nodejs";
 
@@ -19,7 +20,7 @@ async function loadAndVerify(id: string, participantId: string, password: string
   const db = getSupabaseAdmin();
   const { data, error } = await db
     .from("submissions")
-    .select("id,participant_id,submitted_at,edit_password_hash")
+    .select("id,participant_id,submitted_at,edit_password_hash,html_file_name")
     .eq("id", Number(id))
     .eq("participant_id", Number(participantId))
     .maybeSingle();
@@ -36,16 +37,24 @@ async function loadAndVerify(id: string, participantId: string, password: string
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id } = await context.params;
-  const parsed = mutationSchema.safeParse(await request.json().catch(() => null));
+  let input;
+  try { input = await readSubmissionInput(request); }
+  catch (error) {
+    return Response.json({ error: error instanceof SubmissionInputError ? error.message : "입력값을 확인해주세요." }, { status: error instanceof SubmissionInputError ? error.status : 400 });
+  }
+  const parsed = mutationSchema.safeParse(input.fields);
   if (!parsed.success) return Response.json({ error: "입력값을 확인해주세요." }, { status: 400 });
   if (parsed.data.url !== undefined) {
     const urlError = getSubmissionUrlError(parsed.data.url);
     if (urlError) return Response.json({ error: urlError }, { status: 400 });
   }
-  if (isDemoMode()) return Response.json({ success: true });
+  if (isDemoMode()) return input.html ? Response.json({ error: "체험 모드에서는 파일을 저장할 수 없습니다." }, { status: 503 }) : Response.json({ success: true });
   try {
     const verified = await loadAndVerify(id, parsed.data.participantId, parsed.data.password);
     if ("error" in verified) return Response.json({ error: verified.error }, { status: verified.status });
+    if ((input.html && !verified.data.html_file_name) || (parsed.data.url !== undefined && verified.data.html_file_name)) {
+      return Response.json({ error: "제출물의 등록 방식은 변경할 수 없습니다." }, { status: 400 });
+    }
     let normalizedUrl: string | undefined;
     if (parsed.data.url) {
       try {
@@ -55,6 +64,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       }
     }
     const changes: Database["public"]["Tables"]["submissions"]["Update"] = {};
+    if (input.html) { changes.html_file_name = input.html.name; changes.html_content = input.html.content; }
     if (parsed.data.title !== undefined) changes.title = parsed.data.title || null;
     if (parsed.data.description !== undefined) changes.description = parsed.data.description || null;
     if (parsed.data.url !== undefined) {
