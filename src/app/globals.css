@@ -303,13 +303,34 @@ button { cursor: pointer; }
 
 .notice-card {
   display: flex;
+  align-items: flex-start;
   gap: 0.8rem;
-  border: 1px solid #ddd7ff;
+  border: 1px solid #fdba74;
+  border-left: 5px solid #c2410c;
   border-radius: 1.35rem;
-  background: linear-gradient(120deg, #f4f1ff, #fff);
+  background: #fff0e3;
   padding: 1rem 1.1rem;
-  color: #4930a5;
+  color: #7c2d12;
 }
+
+.notice-icon {
+  flex: none;
+  margin-top: 0.2rem;
+  color: #c2410c;
+}
+
+.notice-copy { min-width: 0; overflow-wrap: anywhere; }
+.notice-badge {
+  display: inline-flex;
+  border-radius: 0.45rem;
+  background: #c2410c;
+  padding: 0.2rem 0.55rem;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+.notice-title { margin-top: 0.5rem; font-weight: 800; line-height: 1.5; }
+.notice-content { margin-top: 0.35rem; color: #334155; font-size: 0.875rem; line-height: 1.75; white-space: pre-wrap; }
 
 .status-card {
   display: flex;

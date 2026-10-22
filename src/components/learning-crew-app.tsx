@@ -452,11 +452,12 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                 <AiAssistant key={participantId} participantId={participantId} />
                 <PenaltyNotice notice={data.penaltyNotice} now={data.now} />
                 {data.notices[0] && (
-                  <article className="notice-card">
-                    <Megaphone size={20} />
-                    <div>
-                      <p className="font-extrabold">{data.notices[0].title}</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-600">{data.notices[0].content}</p>
+                  <article className="notice-card" aria-labelledby="home-notice-title">
+                    <Megaphone className="notice-icon" size={22} aria-hidden="true" />
+                    <div className="notice-copy">
+                      <span className="notice-badge">공지사항</span>
+                      <h2 className="notice-title" id="home-notice-title">{data.notices[0].title}</h2>
+                      <p className="notice-content">{data.notices[0].content}</p>
                     </div>
                   </article>
                 )}
