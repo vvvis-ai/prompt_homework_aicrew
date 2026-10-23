@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   calculateBestStreak,
   calculateCompletionRate,
   calculatePenalty,
+  calculateParticipantStatuses,
   calculateStreak,
   daysUntil,
   evaluateDailyStatus,
@@ -30,6 +31,31 @@ const base = {
   excludedDates: new Set<string>(),
   exemptionDates: new Set<string>(),
 };
+
+describe("누적 현황 CPU 회귀 방지", () => {
+  it("기간 전체 집계는 개별 날짜 판정과 같고 제출 시각을 날짜마다 재변환하지 않는다", () => {
+    const input = {
+      ...base,
+      now: "2026-12-31T14:01:00Z",
+      joinedAt: "2026-09-03",
+      leftAt: "2026-12-20",
+      penaltyStart: "2026-09-14",
+      excludedDates: new Set(["2026-10-09"]),
+      exemptionDates: new Set(["2026-10-12"]),
+      submittedAt: Array.from({ length: 90 }, (_, day) => new Date(Date.UTC(2026, 8, day + 1, day % 2 ? 14 : 13, day % 3 ? 0 : 2)).toISOString()),
+    };
+    const formatter = vi.spyOn(Intl.DateTimeFormat.prototype, "formatToParts");
+    let result: ReturnType<typeof calculateParticipantStatuses>;
+    try {
+      result = calculateParticipantStatuses(input);
+      expect(formatter.mock.calls.length).toBeLessThan(200);
+    } finally { formatter.mockRestore(); }
+    expect(result.length).toBe(122);
+    for (const day of result) {
+      expect(day.status).toBe(evaluateDailyStatus({ ...input, dateKey: day.date }));
+    }
+  });
+});
 
 describe("KST 마감 규칙", () => {
   it("23:00:59는 인정하고 23:01:00은 인정하지 않는다", () => {

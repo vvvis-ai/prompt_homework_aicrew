@@ -16,6 +16,10 @@ type Table<Row, Insert = Partial<Row>, Update = Partial<Insert>> = {
 export type Database = {
   public: {
     Tables: {
+      dashboard_snapshot: Table<{
+        id: boolean; revision: string; payload: Json | null;
+        format_version: number; valid_until: string | null; built_at: string | null;
+      }>;
       daily_missions: Table<{ id: number; challenge_id: number; mission_date: string; title: string; prompt: string; operator_id: number; created_at: string }>;
       push_reminders: Table<{
         id: string;

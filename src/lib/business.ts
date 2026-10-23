@@ -20,8 +20,18 @@ export type StatusInput = {
   submittedAt: string[];
 };
 
-export function evaluateDailyStatus(input: StatusInput): DailyStatus {
-  const today = kstDateKey(input.now);
+type StatusContext = { today: string; missConfirmed: boolean; completedDates: Set<string> };
+
+function statusContext(input: Pick<StatusInput, "now" | "submittedAt">): StatusContext {
+  return {
+    today: kstDateKey(input.now),
+    missConfirmed: isMissConfirmed(input.now),
+    completedDates: new Set(input.submittedAt.filter(isSubmissionOnTime).map(kstDateKey)),
+  };
+}
+
+function evaluatePreparedDailyStatus(input: StatusInput, context: StatusContext): DailyStatus {
+  const { today } = context;
   if (input.dateKey > today) return "future";
   if (
     input.dateKey < input.joinedAt ||
@@ -34,16 +44,15 @@ export function evaluateDailyStatus(input: StatusInput): DailyStatus {
   if (input.penaltyStart !== undefined && input.dateKey < input.penaltyStart) return "excluded";
   if (isWeekend(input.dateKey) || input.excludedDates.has(input.dateKey)) return "excluded";
   if (input.exemptionDates.has(input.dateKey)) return "exempt";
-  if (
-    input.submittedAt.some(
-      (submittedAt) =>
-        kstDateKey(submittedAt) === input.dateKey && isSubmissionOnTime(submittedAt),
-    )
-  ) {
+  if (context.completedDates.has(input.dateKey)) {
     return "completed";
   }
-  if (input.dateKey === today && !isMissConfirmed(input.now)) return "pending";
+  if (input.dateKey === today && !context.missConfirmed) return "pending";
   return "missed";
+}
+
+export function evaluateDailyStatus(input: StatusInput): DailyStatus {
+  return evaluatePreparedDailyStatus(input, statusContext(input));
 }
 
 export function summarizeStatuses(statuses: DailyStatus[]) {
@@ -89,9 +98,11 @@ export function calculateParticipantStatuses(
   const start = input.from ?? input.challengeStart;
   const end = [input.to ?? today, input.challengeEnd, today].sort()[0];
   if (start > end) return [];
+  // Convert each submission once, not once for every day of the challenge.
+  const context = statusContext(input);
   return dateKeysBetween(start, end).map((dateKey) => ({
     date: dateKey,
-    status: evaluateDailyStatus({ ...input, dateKey }),
+    status: evaluatePreparedDailyStatus({ ...input, dateKey }, context),
   }));
 }
 

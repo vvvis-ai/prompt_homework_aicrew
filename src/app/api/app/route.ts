@@ -3,10 +3,12 @@ import { z } from "zod";
 
 export const dynamic = "force-dynamic";
 
+const emptyToUndefined = (value: unknown) => value === "" ? undefined : value;
+
 const querySchema = z.object({
-  participantId: z.string().regex(/^\d+$/).optional(),
-  date: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal("all")]).optional(),
-  month: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  participantId: z.preprocess(emptyToUndefined, z.string().regex(/^\d+$/).optional()),
+  date: z.preprocess(emptyToUndefined, z.union([z.iso.date(), z.literal("all")]).optional()),
+  month: z.preprocess(emptyToUndefined, z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).optional()),
   search: z.string().max(100).optional(),
   featuredOnly: z.enum(["true", "false"]).optional(),
 });

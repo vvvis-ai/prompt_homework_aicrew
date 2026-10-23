@@ -29,7 +29,6 @@ type ReminderAdminRow = {
 export async function getOperatorChoices() {
   if (isDemoMode()) {
     return [
-      { id: "1", name: "이나윤", isActive: true },
       { id: "2", name: "운영자", isActive: true },
     ];
   }

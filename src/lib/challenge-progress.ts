@@ -7,6 +7,31 @@ type ParticipantHistory = {
   allStatuses: Array<{ date: string; status: DailyStatus }>;
 };
 
+function summarizePersonalProgress(statuses: DailyStatus[], counts: Map<string, number>): ChallengeProgress["personal"] {
+  return {
+    completedDays: statuses.filter((status) => status === "completed").length,
+    completionRate: calculateCompletionRate(statuses),
+    totalLinks: [...counts.values()].reduce((total, count) => total + count, 0),
+    activeDays: counts.size,
+    streak: calculateStreak(statuses),
+  };
+}
+
+export function buildPersonalProgress(
+  statuses: DailyStatus[],
+  submissionDates: string[],
+  challenge: Challenge,
+  today: string,
+): ChallengeProgress["personal"] {
+  const counts = new Map<string, number>();
+  for (const date of submissionDates) {
+    if (date >= challenge.startDate && date <= challenge.endDate && date <= today) {
+      counts.set(date, (counts.get(date) ?? 0) + 1);
+    }
+  }
+  return summarizePersonalProgress(statuses, counts);
+}
+
 export function buildChallengeProgress({ challenge, today, participantId, histories, submissions, excludedDates }: {
   challenge: Challenge;
   today: string;
@@ -46,13 +71,7 @@ export function buildChallengeProgress({ challenge, today, participantId, histor
   const pending = todayStatuses.filter((status) => status === "pending").length;
   const missed = todayStatuses.filter((status) => status === "missed").length;
   return {
-    personal: {
-      completedDays: personalStatuses.filter((status) => status === "completed").length,
-      completionRate: calculateCompletionRate(personalStatuses),
-      totalLinks: [...personalCounts.values()].reduce((total, count) => total + count, 0),
-      activeDays: personalCounts.size,
-      streak: calculateStreak(personalStatuses),
-    },
+    personal: summarizePersonalProgress(personalStatuses, personalCounts),
     crew: {
       activeDays: crewCounts.size,
       today: { completed, pending, missed, exempt: todayStatuses.filter((status) => status === "exempt").length, target: completed + pending + missed },

@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   if (!session.authenticated) return NextResponse.json({ error: "인증이 필요합니다." }, { status: 401 });
   const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "운영자를 선택해주세요." }, { status: 400 });
-  let operator = { id: parsed.data.operatorId, name: parsed.data.operatorId === "1" ? "이나윤" : "운영자" };
+  let operator = { id: parsed.data.operatorId, name: "운영자" };
   if (!isDemoMode()) {
     const { data, error } = await getSupabaseAdmin()
       .from("operators")

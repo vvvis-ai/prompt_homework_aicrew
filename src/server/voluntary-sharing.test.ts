@@ -1,27 +1,35 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ tables: {} as Record<string, Record<string, unknown>[]>, inserted: vi.fn() }));
+const mocks = vi.hoisted(() => ({ tables: {} as Record<string, Record<string, unknown>[]>, inserted: vi.fn(), reads: vi.fn() }));
 vi.mock("server-only", () => ({}));
 vi.mock("@/server/password-service", () => ({ hashPassword: async () => "test-hash" }));
 vi.mock("@/server/supabase", () => ({
   isDemoMode: () => false,
   getSupabaseAdmin: () => ({
     from: (table: string) => {
+      mocks.reads(table);
       let rows = [...(mocks.tables[table] ?? [])];
-      const result = () => ({ data: rows, error: null });
+      let columns: string[] | undefined;
+      let update: Record<string, unknown> | undefined;
+      const result = () => {
+        if (update) rows.forEach((row) => Object.assign(row, structuredClone(update)));
+        return { data: columns ? rows.map((row) => Object.fromEntries(columns!.map((key) => [key, row[key]]))) : rows, error: null };
+      };
       const query = {
-        select: () => query, order: () => query,
+        select: (selection?: string) => { columns = selection?.split(","); return query; }, order: () => query,
+        update: (value: Record<string, unknown>) => { update = value; return query; },
         range: (from: number, to: number) => { rows = rows.slice(from, to + 1); return query; },
         eq: (key: string, value: unknown) => { rows = rows.filter((row) => row[key] === value); return query; },
         in: (key: string, values: unknown[]) => { rows = rows.filter((row) => values.includes(row[key])); return query; },
         lte: (key: string, value: string) => { rows = rows.filter((row) => String(row[key]) <= value); return query; },
         gte: (key: string, value: string) => { rows = rows.filter((row) => String(row[key]) >= value); return query; },
-        maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
-        single: async () => ({ data: rows[0] ?? null, error: null }),
+        maybeSingle: async () => ({ data: result().data[0] ?? null, error: null }),
+        single: async () => ({ data: result().data[0] ?? null, error: null }),
         insert: (row: Record<string, unknown>) => {
           mocks.inserted(row);
           const stored = { ...row, id: 999, submitted_at: new Date().toISOString(), is_featured: false };
           mocks.tables[table] = [...(mocks.tables[table] ?? []), stored];
+          invalidateSnapshot();
           rows = [stored];
           return query;
         },
@@ -36,6 +44,12 @@ import { getAppData } from "./app-data";
 import { POST } from "@/app/api/submissions/route";
 import { calculateParticipantStatuses, calculatePenalty } from "@/lib/business";
 
+function invalidateSnapshot() {
+  const row = mocks.tables.dashboard_snapshot[0];
+  row.revision = `${row.revision}x`;
+  row.payload = null;
+}
+
 const request = (participantId: string) => new Request("http://localhost/api/submissions", {
   method: "POST", headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ participantId, url: "https://share.gemini.google/example", password: "test-password" }),
@@ -45,7 +59,9 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-09-15T12:00:00Z"));
   mocks.inserted.mockClear();
+  mocks.reads.mockClear();
   mocks.tables = {
+    dashboard_snapshot: [{ id: true, revision: "initial", payload: null, valid_until: null, format_version: 0 }],
     challenges: [
       { id: 1, name: "2기", is_active: true, start_date: "2026-09-01", end_date: "2026-12-31", penalty_start_date: "2026-09-14" },
       { id: 2, name: "1기", is_active: false, start_date: "2026-01-07", end_date: "2026-06-30" },
@@ -209,6 +225,62 @@ describe("참가자 홈의 전체 기간 진행 현황", () => {
     expect(beforeSelection.progress?.crew.today).toEqual({ completed: 0, pending: 2, missed: 0, exempt: 0, target: 2 });
     expect(beforeSelection.progress?.personal).toMatchObject({ completedDays: 0, totalLinks: 0, activeDays: 0 });
     mocks.tables.challenges = [];
+    invalidateSnapshot();
     expect((await getAppData({ participantId: "10" })).progress).toBeNull();
+  });
+});
+
+describe("공통 스냅샷 재사용", () => {
+  it("참가자·월·피드 필터를 바꿔도 원본 조회와 공동 집계를 반복하지 않는다", async () => {
+    await POST(request("10"));
+    const first = await getAppData({ participantId: "10", date: "all" });
+    mocks.reads.mockClear();
+    const dateConversion = vi.spyOn(Intl.DateTimeFormat.prototype, "formatToParts");
+    try {
+      for (const query of [{ participantId: "20" }, { month: "2026-08" }, { featuredOnly: true, search: "AI" }]) {
+        const next = await getAppData(query);
+        expect(next.progress?.crew).toEqual(first.progress?.crew);
+        expect(next.progress?.activity).toEqual(first.progress?.activity);
+      }
+      expect(mocks.reads.mock.calls).toEqual(Array.from({ length: 3 }, () => ["dashboard_snapshot"]));
+      expect(dateConversion.mock.calls.length).toBeLessThan(20);
+    } finally { dateConversion.mockRestore(); }
+    const payload = JSON.stringify(mocks.tables.dashboard_snapshot[0].payload);
+    expect(payload).not.toContain("edit_password_hash");
+    expect(payload).not.toContain("html_content");
+  });
+
+  it("캐시가 있어도 새 제출·수정·삭제를 다음 조회에 반영한다", async () => {
+    expect((await getAppData({ participantId: "10" })).todayStatus).toBe("pending");
+    await POST(request("10"));
+    expect((await getAppData({ participantId: "10" })).todayStatus).toBe("completed");
+    mocks.tables.submissions[0].title = "수정한 제목";
+    invalidateSnapshot();
+    expect((await getAppData({})).feed[0].title).toBe("수정한 제목");
+    mocks.tables.submissions = [];
+    invalidateSnapshot();
+    const after = await getAppData({ participantId: "10" });
+    expect(after.todayStatus).toBe("pending");
+    expect(after.feed).toHaveLength(0);
+  });
+
+  it("한국시간 자정에는 날짜·오늘 상태·달력을 갱신한다", async () => {
+    vi.setSystemTime(new Date("2026-09-30T14:59:59Z"));
+    expect((await getAppData({ participantId: "10" })).todayStatus).toBe("missed");
+    vi.setSystemTime(new Date("2026-09-30T15:00:00Z"));
+    const next = await getAppData({ participantId: "10" });
+    expect(next.month).toBe("2026-10");
+    expect(next.todayStatus).toBe("pending");
+    expect(next.calendar[0].date).toBe("2026-10-01");
+  });
+
+  it("미래 시각의 제출은 그 시각에 캐시를 만료시킨 뒤 표시한다", async () => {
+    await POST(request("10"));
+    mocks.tables.submissions[0].submitted_at = "2026-09-15T12:05:00Z";
+    expect((await getAppData({ participantId: "10" })).feed).toHaveLength(0);
+    vi.setSystemTime(new Date("2026-09-15T12:05:00Z"));
+    const next = await getAppData({ participantId: "10" });
+    expect(next.feed).toHaveLength(1);
+    expect(next.todayStatus).toBe("completed");
   });
 });

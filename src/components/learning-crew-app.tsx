@@ -38,6 +38,7 @@ import { challengeTimeline } from "@/lib/challenge-progress";
 import { HtmlFileInput } from "./html-file-input";
 import { HtmlSubmissionPreview } from "./html-submission-preview";
 import { AiAssistant } from "./ai-assistant";
+import { APP_SEARCH_MAX_LENGTH, fetchAppData } from "@/lib/app-refresh";
 
 type Tab = "home" | "submit" | "feed" | "growth";
 type PaginationItem = number | `ellipsis-${number}`;
@@ -119,6 +120,29 @@ function challengeProgress(data: AppData) {
   return challengeTimeline(data.challenge, kstDateKey(data.now)).percent;
 }
 
+// Keep the initial HTML cheap: load data and render the dashboard in the browser.
+// Cloudflare's CPU limit can terminate SSR before an error boundary can respond.
+export function LearningCrewLoader() {
+  const [initialData, setInitialData] = useState<AppData | null>(null);
+  const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchAppData(new URLSearchParams(), controller.signal)
+      .then(setInitialData)
+      .catch((failure: Error) => { if (!controller.signal.aborted) setError(failure.message); });
+    return () => controller.abort();
+  }, [attempt]);
+
+  if (initialData) return <LearningCrewApp initialData={initialData} />;
+  return <main className="mx-auto flex min-h-screen max-w-lg flex-col items-center justify-center gap-5 px-6 text-center">
+    <h1 className="text-2xl font-black">AI 러닝크루</h1>
+    <p role="status" className="text-slate-600">{error || "크루 현황을 불러오고 있어요."}</p>
+    {error && <button className="primary-button" type="button" onClick={() => { setError(""); setAttempt((value) => value + 1); }}>다시 시도</button>}
+  </main>;
+}
+
 export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   const [data, setData] = useState(initialData);
   const [participantId, setParticipantId] = useState("");
@@ -132,6 +156,8 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
   const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
+  const [refreshError, setRefreshError] = useState("");
+  const [refreshAttempt, setRefreshAttempt] = useState(0);
   const [hydrated, setHydrated] = useState(false);
   const [receipt, setReceipt] = useState<{ onTime: boolean; url: string } | null>(null);
   const [remaining, setRemaining] = useState<string | null>(null);
@@ -178,16 +204,12 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
       if (participantId) params.set("participantId", participantId);
       if (search.trim()) params.set("search", search.trim());
       try {
-        const response = await fetch(`/api/app?${params}`, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-        const result = (await response.json()) as AppData & { error?: string };
-        if (!response.ok) throw new Error(result.error);
+        const result = await fetchAppData(params, controller.signal);
         setData(result);
+        setRefreshError("");
       } catch (error) {
-        if ((error as Error).name !== "AbortError") {
-          setToast("데이터를 새로 불러오지 못했습니다.");
+        if (!controller.signal.aborted && (error as Error).name !== "AbortError") {
+          setRefreshError((error as Error).message);
         }
       } finally {
         if (!controller.signal.aborted) setBusy(false);
@@ -197,15 +219,21 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [featuredOnly, feedDate, hydrated, month, participantId, savedOnly, search]);
+  }, [featuredOnly, feedDate, hydrated, month, participantId, savedOnly, search, refreshAttempt]);
 
   useEffect(() => {
     if (!hydrated || !participantId) return;
     const controller = new AbortController();
+    let updating = false;
     const update = () => {
       if (document.visibilityState !== "visible") return;
+      if (updating) return;
+      updating = true;
       const params = new URLSearchParams({ participantId, date: savedOnly ? "all" : feedDate, month, featuredOnly: String(featuredOnly), search });
-      fetch(`/api/app?${params}`, { cache: "no-store", signal: controller.signal }).then(async (response) => { if (response.ok) setData(await response.json()); }).catch(() => {});
+      fetchAppData(params, controller.signal)
+        .then((result) => { setData(result); setRefreshError(""); })
+        .catch(() => {})
+        .finally(() => { updating = false; });
     };
     const timer = window.setInterval(update, 60000);
     window.addEventListener("focus", update);
@@ -246,10 +274,9 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
       featuredOnly: String(featuredOnly),
     });
     if (search.trim()) params.set("search", search.trim());
-    const response = await fetch(`/api/app?${params}`, { cache: "no-store" });
-    const result = (await response.json()) as AppData;
-    if (!response.ok) throw new Error("제출 현황을 불러오지 못했습니다.");
+    const result = await fetchAppData(params);
     setData(result);
+    setRefreshError("");
   };
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -581,14 +608,14 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                   {!savedOnly && (
                     <div className="mt-5 flex items-center justify-between gap-2">
                       <button className="icon-button" type="button" aria-label="이전 날" onClick={() => setFeedDate(addDate(feedDate, -1))}><ChevronLeft size={20} /></button>
-                      <input className="date-input" type="date" max={kstDateKey(data.now)} value={feedDate} onChange={(event) => setFeedDate(event.target.value)} />
+                      <input className="date-input" type="date" max={kstDateKey(data.now)} value={feedDate} onChange={(event) => { if (event.target.value && event.target.validity.valid) setFeedDate(event.target.value); }} />
                       <button className="icon-button" type="button" aria-label="다음 날" disabled={feedDate >= kstDateKey(data.now)} onClick={() => setFeedDate(addDate(feedDate, 1))}><ChevronRight size={20} /></button>
                     </div>
                   )}
                   <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
                     <label className="search-box">
                       <Search size={18} />
-                      <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="이름, 제목, 설명 검색" aria-label="프롬프트 검색" />
+                      <input value={search} maxLength={APP_SEARCH_MAX_LENGTH} onChange={(event) => setSearch(event.target.value.slice(0, APP_SEARCH_MAX_LENGTH))} placeholder="이름, 제목, 설명 검색" aria-label="프롬프트 검색" />
                     </label>
                     <button className={`filter-button ${featuredOnly ? "filter-active" : ""}`} type="button" onClick={() => setFeaturedOnly(!featuredOnly)}>
                       <Star size={17} fill={featuredOnly ? "currentColor" : "none"} /> 따라 해볼 사례
@@ -808,10 +835,11 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
         </div>
       )}
 
-      {toast && (
+      {(toast || refreshError) && (
         <div className="toast" role="status" aria-live="polite">
-          <span>{toast}</span>
-          <button type="button" aria-label="알림 닫기" onClick={() => setToast("")}><X size={17} /></button>
+          <span>{toast || refreshError}</span>
+          {!toast && refreshError && <button type="button" disabled={busy} className="shrink-0 font-bold underline" onClick={() => setRefreshAttempt((value) => value + 1)}>{busy ? "불러오는 중" : "다시 시도"}</button>}
+          <button type="button" aria-label="알림 닫기" onClick={() => { setToast(""); setRefreshError(""); }}><X size={17} /></button>
         </div>
       )}
     </main>

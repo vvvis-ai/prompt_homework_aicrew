@@ -1,6 +1,5 @@
 -- Local development data. Applied only by `supabase db reset`.
 insert into public.operators (name) values
-  ('이나윤'),
   ('운영자');
 
 insert into public.challenges (
@@ -55,4 +54,4 @@ select challenge.id,
 from public.challenges as challenge
 cross join public.operators as operator
 where challenge.name = 'AI 러닝크루 1기'
-  and operator.name = '이나윤';
+  and operator.name = '운영자';

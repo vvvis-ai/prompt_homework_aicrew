@@ -1,9 +1,7 @@
-import { LearningCrewApp } from "@/components/learning-crew-app";
-import { getAppData } from "@/server/app-data";
+import { LearningCrewLoader } from "@/components/learning-crew-app";
 
 export const dynamic = "force-dynamic";
 
-export default async function Home() {
-  const initialData = await getAppData({});
-  return <LearningCrewApp initialData={initialData} />;
+export default function Home() {
+  return <LearningCrewLoader />;
 }

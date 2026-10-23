@@ -1,6 +1,6 @@
 import "server-only";
 import { groupParticipants } from "@/lib/participant-groups";
-import { buildChallengeProgress } from "@/lib/challenge-progress";
+import { buildChallengeProgress, buildPersonalProgress } from "@/lib/challenge-progress";
 import { isVoluntarySharingChallenge } from "@/lib/participation";
 import { recentMisses, weekDates } from "@/lib/habits";
 
@@ -10,7 +10,6 @@ import {
   calculateParticipantStatuses,
   calculateStreak,
   daysUntil,
-  evaluateDailyStatus,
   penaltyPhaseFor,
   penaltyRateForDate,
   summarizeStatuses,
@@ -25,6 +24,7 @@ import type {
   Participant,
   Submission,
 } from "@/lib/types";
+import { dashboardExpiry, dashboardSnapshot } from "@/server/dashboard-cache";
 import { getSupabaseAdmin, isDemoMode } from "@/server/supabase";
 
 type ChallengeRow = {
@@ -97,6 +97,68 @@ function previousMonthKey(monthKey: string) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+function prepareStatistics(
+  now: Date, challengeRow: ChallengeRow, participantRows: ParticipantRow[],
+  submissionRows: SubmissionRow[], exemptions: ExemptionRow[], excludedRows: ExcludedRow[],
+  sharingParticipants: ParticipantRow[],
+) {
+  const today = kstDateKey(now);
+  const challenge = toChallenge(challengeRow);
+  const submissions = submissionRows.map((row) => ({
+    id: String(row.id), participantId: String(row.participant_id), submittedAt: row.submitted_at,
+  }));
+  const excludedDates = new Set(excludedRows.map((item) => item.excluded_date));
+  const exemptionMap = new Map<string, Set<string>>();
+  for (const exemption of exemptions) {
+    const participantId = String(exemption.participant_id);
+    const set = exemptionMap.get(participantId) ?? new Set<string>();
+    set.add(exemption.exemption_date);
+    exemptionMap.set(participantId, set);
+  }
+  const submissionMap = new Map<string, string[]>();
+  for (const submission of submissions) {
+    const list = submissionMap.get(submission.participantId) ?? [];
+    list.push(submission.submittedAt);
+    submissionMap.set(submission.participantId, list);
+  }
+
+  const participantGrowth = participantRows.map((row) => {
+    const participant = toParticipant(row);
+    const allStatuses = calculateParticipantStatuses({
+      now,
+      joinedAt: participant.joinedAt,
+      leftAt: participant.leftAt,
+      challengeStart: challenge.startDate,
+      challengeEnd: challenge.endDate,
+      penaltyStart: challenge.penaltyStartDate,
+      excludedDates,
+      exemptionDates: exemptionMap.get(participant.id) ?? new Set(),
+      submittedAt: submissionMap.get(participant.id) ?? [],
+    });
+    return {
+      participantId: participant.id,
+      allStatuses,
+    };
+  });
+
+  const progress = buildChallengeProgress({
+    challenge, today, participantId: "", histories: participantGrowth, submissions, excludedDates,
+  });
+  const submissionDates = Object.fromEntries(submissions.map((row) => [row.id, kstDateKey(row.submittedAt)]));
+  const personalProgress = Object.fromEntries([...participantRows, ...sharingParticipants].map((row) => {
+    const id = String(row.id);
+    return [id, buildPersonalProgress(
+      participantGrowth.find((item) => item.participantId === id)?.allStatuses.map((day) => day.status) ?? [],
+      submissions.filter((item) => item.participantId === id).map((item) => submissionDates[item.id]),
+      challenge, today,
+    )];
+  }));
+  const crewParticipantCount = participantGrowth.filter((entry) =>
+    entry.allStatuses.some((item) => item.status !== "not_enrolled" && item.status !== "future"),
+  ).length;
+  return { participantGrowth, progress, personalProgress, submissionDates, crewParticipantCount };
+}
+
 function buildData(
   query: AppQuery,
   now: Date,
@@ -109,6 +171,7 @@ function buildData(
   demo: boolean,
   penaltyRates: Array<{ effective_from: string; amount: number }> = [],
   sharingParticipants: ParticipantRow[] = [],
+  prepared = prepareStatistics(now, challengeRow, participantRows, submissionRows, exemptions, excludedRows, sharingParticipants),
 ): AppData {
   const today = kstDateKey(now);
   const month = query.month ?? today.slice(0, 7);
@@ -133,81 +196,34 @@ function buildData(
     submittedAt: submission.submitted_at,
     isFeatured: submission.is_featured,
   }));
-  const excludedDates = new Set(excludedRows.map((item) => item.excluded_date));
-  const exemptionMap = new Map<string, Set<string>>();
-  for (const exemption of exemptions) {
-    const participantId = String(exemption.participant_id);
-    const set = exemptionMap.get(participantId) ?? new Set<string>();
-    set.add(exemption.exemption_date);
-    exemptionMap.set(participantId, set);
-  }
-  const submissionMap = new Map<string, string[]>();
-  for (const submission of submissions) {
-    const list = submissionMap.get(submission.participantId) ?? [];
-    list.push(submission.submittedAt);
-    submissionMap.set(submission.participantId, list);
-  }
+  const { participantGrowth, submissionDates, crewParticipantCount } = prepared;
+  const selectedGrowth = participantGrowth.find((entry) => entry.participantId === selectedParticipant?.id);
+  const selectedStatuses = new Map(selectedGrowth?.allStatuses.map((day) => [day.date, day.status]) ?? []);
+  const progress = {
+    ...prepared.progress,
+    personal: prepared.personalProgress[selectedParticipant?.id ?? ""] ?? prepared.progress.personal,
+  };
 
   const calendar = selectedParticipant
     ? dateKeysInMonth(month).map((date) => {
         const daySubmissions = submissions.filter(
           (submission) =>
             submission.participantId === selectedParticipant.id &&
-            kstDateKey(submission.submittedAt) === date,
+            submissionDates[submission.id] === date,
         );
         return {
           date,
           day: Number(date.slice(-2)),
-          status: sharingOnly ? (date > today ? "future" as const : "not_enrolled" as const) : evaluateDailyStatus({
-            dateKey: date,
-            now,
-            joinedAt: selectedParticipant.joinedAt,
-            leftAt: selectedParticipant.leftAt,
-            challengeStart: challenge.startDate,
-            challengeEnd: challenge.endDate,
-            penaltyStart: challenge.penaltyStartDate,
-            excludedDates,
-            exemptionDates: exemptionMap.get(selectedParticipant.id) ?? new Set(),
-            submittedAt: submissionMap.get(selectedParticipant.id) ?? [],
-          }),
+          status: selectedStatuses.get(date) ?? (date > today ? "future" as const : "not_enrolled" as const),
           submissions: daySubmissions,
         };
       })
     : [];
 
   const monthSummary = summarizeStatuses(calendar.map((day) => day.status));
-  const participantGrowth = participantRows.map((row) => {
-    const participant = toParticipant(row);
-    const allStatuses = calculateParticipantStatuses({
-      now,
-      joinedAt: participant.joinedAt,
-      leftAt: participant.leftAt,
-      challengeStart: challenge.startDate,
-      challengeEnd: challenge.endDate,
-      penaltyStart: challenge.penaltyStartDate,
-      excludedDates,
-      exemptionDates: exemptionMap.get(participant.id) ?? new Set(),
-      submittedAt: submissionMap.get(participant.id) ?? [],
-    });
-    return {
-      participantId: participant.id,
-      allStatuses,
-    };
-  });
-  const selectedGrowth = participantGrowth.find(
-    (entry) => entry.participantId === selectedParticipant?.id,
-  );
-  const progress = buildChallengeProgress({
-    challenge, today, participantId: selectedParticipant?.id ?? "",
-    histories: participantGrowth, submissions, excludedDates,
-  });
-  const crewParticipantCount = participantGrowth.filter((entry) =>
-    entry.allStatuses.some((item) => item.status !== "not_enrolled" && item.status !== "future"),
-  ).length;
-
   const normalizedSearch = query.search?.trim().toLocaleLowerCase("ko") ?? "";
   const feed = submissions
-    .filter((submission) => feedDate === "all" || kstDateKey(submission.submittedAt) === feedDate)
+    .filter((submission) => feedDate === "all" || submissionDates[submission.id] === feedDate)
     .filter((submission) => !query.featuredOnly || submission.isFeatured)
     .filter(
       (submission) =>
@@ -223,20 +239,7 @@ function buildData(
         .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
     : [];
 
-  const todayStatus = selectedParticipant && !sharingOnly
-    ? evaluateDailyStatus({
-        dateKey: today,
-        now,
-        joinedAt: selectedParticipant.joinedAt,
-        leftAt: selectedParticipant.leftAt,
-        challengeStart: challenge.startDate,
-        challengeEnd: challenge.endDate,
-        penaltyStart: challenge.penaltyStartDate,
-        excludedDates,
-        exemptionDates: exemptionMap.get(selectedParticipant.id) ?? new Set(),
-        submittedAt: submissionMap.get(selectedParticipant.id) ?? [],
-      })
-    : "not_enrolled";
+  const todayStatus = selectedStatuses.get(today) ?? "not_enrolled";
   const previousMonth = previousMonthKey(month);
   const previousMonthStatuses = selectedGrowth?.allStatuses
     .filter((item) => item.date.startsWith(previousMonth))
@@ -277,7 +280,7 @@ function buildData(
         ? submissions.filter(
             (submission) =>
               submission.participantId === selectedParticipant.id &&
-              kstDateKey(submission.submittedAt).startsWith(month),
+              submissionDates[submission.id].startsWith(month),
           ).length
         : 0,
       streak: calculateStreak(selectedGrowth?.allStatuses.map((item) => item.status) ?? []),
@@ -424,27 +427,26 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
     return data;
   }
 
-  const db = getSupabaseAdmin();
-  const { data: challenge, error: challengeError } = await db
-    .from("challenges")
-    .select("id,name,start_date,end_date,penalty_start_date")
-    .eq("is_active", true)
-    .maybeSingle();
-  if (challengeError) throw challengeError;
+  const snapshot = await dashboardSnapshot(async (at) => {
+    const value = await loadDashboard(at);
+    return { value, validUntil: value?.validUntil ?? dashboardExpiry(at) };
+  });
+  const rows = snapshot.value;
+  const challenge = rows?.challenge;
   if (!challenge) {
     return {
       progress: null,
       sharingOnly: false,
       demo: false,
       habit: { week: [], recentMisses: 0 },
-      now: now.toISOString(),
+      now: snapshot.now.toISOString(),
       challenge: null,
       penaltyNotice: null,
       participants: [],
       participantGroups: [],
       selectedParticipant: null,
       todayStatus: "not_enrolled",
-      month: query.month ?? kstDateKey(now).slice(0, 7),
+      month: query.month ?? kstDateKey(snapshot.now).slice(0, 7),
       summary: {
         completedDays: 0,
         missedDays: 0,
@@ -469,6 +471,26 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
       notices: [],
     };
   }
+  if (!rows) throw new Error("Missing dashboard snapshot");
+  const data = buildData(
+    query, snapshot.now, rows.challenge, rows.participants, rows.submissions,
+    rows.exemptions, rows.excluded, rows.notices, false,
+    rows.penaltyRates, rows.sharingParticipants, rows.prepared,
+  );
+  data.participantGroups = rows.participantGroups;
+  return data;
+}
+
+async function loadDashboard(now: Date) {
+  const db = getSupabaseAdmin();
+  const { data: challenge, error: challengeError } = await db
+    .from("challenges")
+    .select("id,name,start_date,end_date,penalty_start_date")
+    .eq("is_active", true)
+    .maybeSingle();
+  if (challengeError) throw challengeError;
+  if (!challenge) return null;
+
   const challengeId = challenge.id;
   const [{ data: rosterChallenges, error: rosterChallengeError }, { data: rosterMembers, error: rosterMemberError }] = await Promise.all([
     db.from("challenges").select("id,name,is_active,start_date,end_date").lte("start_date", kstDateKey(now)),
@@ -482,7 +504,7 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
   const [{ data: participants, error: participantsError }, { data: submissions, error: submissionsError }, { data: exemptions, error: exemptionsError }, { data: excluded, error: excludedError }, { data: notices, error: noticesError }] =
     await Promise.all([
       db.from("participants").select("id,name,affiliation,joined_at,left_at,is_active").eq("challenge_id", challengeId).order("name"),
-      allRows((from, to) => db.from("submissions").select("id,participant_id,title,url,description,submitted_at,is_featured,html_file_name,updated_at").in("challenge_id", [challengeId, ...sharingChallengeIds]).gte("submitted_at", new Date(`${challenge.start_date}T00:00:00+09:00`).toISOString()).lte("submitted_at", now.toISOString()).order("submitted_at").order("id").range(from, to)),
+      allRows((from, to) => db.from("submissions").select("id,participant_id,title,url,description,submitted_at,is_featured,html_file_name,updated_at").in("challenge_id", [challengeId, ...sharingChallengeIds]).gte("submitted_at", new Date(`${challenge.start_date}T00:00:00+09:00`).toISOString()).order("submitted_at").order("id").range(from, to)),
       allRows((from, to) => db.from("exemptions").select("participant_id,exemption_date").eq("challenge_id", challengeId).order("id").range(from, to)),
       db.from("excluded_dates").select("excluded_date").eq("challenge_id", challengeId),
       db.from("notices").select("id,title,content,is_pinned,created_at").eq("challenge_id", challengeId).order("is_pinned", { ascending: false }).order("created_at", { ascending: false }),
@@ -495,19 +517,13 @@ export async function getAppData(query: AppQuery): Promise<AppData> {
     .eq("challenge_id", challengeId)
     .order("effective_from");
   if (penaltyRateError) throw penaltyRateError;
-  const data = buildData(
-    query,
-    now,
-    challenge as ChallengeRow,
-    (participants ?? []) as ParticipantRow[],
-    (submissions ?? []) as SubmissionRow[],
-    (exemptions ?? []) as ExemptionRow[],
-    (excluded ?? []) as ExcludedRow[],
-    (notices ?? []) as NoticeRow[],
-    false,
-    (penaltyRates ?? []) as Array<{ effective_from: string; amount: number }>,
-    sharingParticipants,
-  );
-  data.participantGroups = groupParticipants(rosterChallenges ?? [], rosterMembers ?? []);
-  return data;
+  const visibleSubmissions = (submissions ?? []).filter((row) => Date.parse(row.submitted_at) <= now.getTime());
+  return {
+    challenge, participants: participants ?? [], submissions: visibleSubmissions,
+    exemptions: exemptions ?? [], excluded: excluded ?? [], notices: notices ?? [],
+    penaltyRates: penaltyRates ?? [], sharingParticipants,
+    participantGroups: groupParticipants(rosterChallenges ?? [], rosterMembers ?? []),
+    prepared: prepareStatistics(now, challenge, participants ?? [], visibleSubmissions, exemptions ?? [], excluded ?? [], sharingParticipants),
+    validUntil: dashboardExpiry(now, (submissions ?? []).map((row) => row.submitted_at)),
+  };
 }
