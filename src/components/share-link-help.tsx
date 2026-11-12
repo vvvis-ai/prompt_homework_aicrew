@@ -49,7 +49,11 @@ export function ShareLinkHelp({ id, error, errorId }: { id: string; error: strin
 
   return (
     <div className={`rounded-xl border p-3 text-sm font-normal leading-6 ${error ? "border-amber-200 bg-amber-50 text-amber-950" : "border-blue-100 bg-blue-50 text-slate-600"}`}>
-      <p id={id} className="text-xs">‘share’ 또는 ‘/notebook/’이 포함된 링크를 남겨주세요.</p>
+      <div id={id} className="text-xs">
+        <p>AI 공유 링크 또는 배포한 웹사이트 주소를 남겨주세요.</p>
+        <p className="mt-1">배포 주소: Netlify, Cloudflare Pages·Workers, Vercel, GitHub Pages, Render의 기본 주소를 사용할 수 있어요.</p>
+        <p className="mt-1">다른 사람도 링크를 열 수 있는지 확인해주세요.</p>
+      </div>
       {error && <p id={errorId} role="alert" className="mt-1">{error}</p>}
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
         <button ref={trigger} type="button" popoverTarget={popupId} aria-haspopup="dialog" aria-expanded={open} aria-controls={popupId} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 font-bold text-blue-700 underline underline-offset-4 hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">

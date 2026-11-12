@@ -27,4 +27,21 @@ describe("server-side share link enforcement", () => {
     expect((await POST(request("POST", url))).status).toBe(200);
     expect((await PATCH(request("PATCH", url), { params: Promise.resolve({ id: "1" }) })).status).toBe(200);
   });
+
+  it.each([
+    "https://my-site.netlify.app/",
+    "https://my-site.pages.dev/",
+    "https://my-site.example.workers.dev/",
+    "https://my-site.vercel.app/",
+    "https://user.github.io/project/",
+    "https://my-site.onrender.com/",
+  ])("allows deployment links in create and edit: %s", async (url) => {
+    expect((await POST(request("POST", url))).status).toBe(200);
+    expect((await PATCH(request("PATCH", url), { params: Promise.resolve({ id: "1" }) })).status).toBe(200);
+  });
+
+  it.each(["https://my-site.netlify.app.example.com/", "https://my-site.netlify.app@evil.example/"])("rejects lookalike deployment hosts in create and edit: %s", async (url) => {
+    expect((await POST(request("POST", url))).status).toBe(400);
+    expect((await PATCH(request("PATCH", url), { params: Promise.resolve({ id: "1" }) })).status).toBe(400);
+  });
 });

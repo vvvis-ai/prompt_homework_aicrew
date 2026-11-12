@@ -37,6 +37,7 @@ import { ChallengeDashboard } from "./challenge-dashboard";
 import { challengeTimeline } from "@/lib/challenge-progress";
 import { HtmlFileInput } from "./html-file-input";
 import { HtmlSubmissionPreview } from "./html-submission-preview";
+import { WebsiteSubmissionPreview } from "./website-submission-preview";
 import { AiAssistant } from "./ai-assistant";
 import { APP_SEARCH_MAX_LENGTH, fetchAppData } from "@/lib/app-refresh";
 
@@ -571,8 +572,8 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                     <button type="button" className={`filter-button ${submissionKind === "html" ? "filter-active" : ""}`} aria-pressed={submissionKind === "html"} disabled={busy} onClick={() => setSubmissionKind("html")}>HTML 파일 업로드</button>
                   </div>
                   {submissionKind === "html" ? <HtmlFileInput file={htmlFile} onChange={setHtmlFile} disabled={busy} /> : <div className="grid gap-2">
-                    <label htmlFor="submission-url" className="font-extrabold">AI 활용 링크 <span className="text-red-500">*</span></label>
-                    <input id="submission-url" className="form-input" name="url" type="url" required maxLength={2048} placeholder="https://chatgpt.com/share/..." aria-invalid={Boolean(submissionUrlError)} aria-describedby={submissionUrlError ? "submission-url-help submission-url-error" : "submission-url-help"} onChange={() => setSubmissionUrlError(null)} />
+                    <label htmlFor="submission-url" className="font-extrabold">AI 공유 링크 또는 웹사이트 주소 <span className="text-red-500">*</span></label>
+                    <input id="submission-url" className="form-input" name="url" type="url" required maxLength={2048} placeholder="https://내-사이트.netlify.app" aria-invalid={Boolean(submissionUrlError)} aria-describedby={submissionUrlError ? "submission-url-help submission-url-error" : "submission-url-help"} onChange={() => setSubmissionUrlError(null)} />
                     <ShareLinkHelp id="submission-url-help" errorId="submission-url-error" error={submissionUrlError} />
                   </div>}
                   <Field label="제목" hint="선택사항">
@@ -658,6 +659,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
                       </button>
                     </div>
                     <HtmlSubmissionPreview submission={submission} />
+                    <WebsiteSubmissionPreview submission={submission} />
                     <a className="link-chip mt-4" href={submission.url} target="_blank" rel="noopener noreferrer">
                       <Link2 size={17} /><span>{submission.htmlFileName ? "HTML 웹페이지 상세 보기" : hostLabel(submission.url)}</span><ExternalLink size={15} />
                     </a>
@@ -812,7 +814,7 @@ export function LearningCrewApp({ initialData }: { initialData: AppData }) {
             <h2 className="mt-1 text-xl font-black" id="submission-edit-title">등록한 제출물 수정</h2>
             <form className="mt-5 grid gap-4" onSubmit={saveEdit}>
               {editing.htmlFileName ? <><p className="text-sm text-slate-600">현재 파일: {editing.htmlFileName}</p><HtmlFileInput file={editHtmlFile} onChange={setEditHtmlFile} disabled={busy} optional /></> : <div className="grid gap-2">
-                <label htmlFor="edit-url" className="font-extrabold">AI 활용 링크 <span className="text-red-500">*</span></label>
+                <label htmlFor="edit-url" className="font-extrabold">AI 공유 링크 또는 웹사이트 주소 <span className="text-red-500">*</span></label>
                 <input id="edit-url" className="form-input" name="url" type="url" required maxLength={2048} defaultValue={editing.url} aria-invalid={Boolean(editUrlError)} aria-describedby={editUrlError ? "edit-url-help edit-url-error" : "edit-url-help"} onChange={() => setEditUrlError(null)} />
                 <ShareLinkHelp id="edit-url-help" errorId="edit-url-error" error={editUrlError} />
               </div>}
