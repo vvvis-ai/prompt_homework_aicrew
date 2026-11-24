@@ -47,14 +47,14 @@ export function ParticipantDirectory({ groups, onChoose }: {
         <ul className="grid grid-cols-2 gap-2 sm:gap-3">
           {selected.members.map((person) => {
             const content = <>
-              <span className="avatar !hidden shrink-0 sm:!grid sm:!size-9" aria-hidden="true">{person.name.slice(0, 1)}</span>
+              <span className="avatar !hidden shrink-0 @min-[11rem]:!grid @min-[11rem]:!size-9" aria-hidden="true">{person.name.slice(0, 1)}</span>
               <span className="min-w-0 flex-1 text-left">
                 <span className="block break-words font-bold">{person.name}</span>
-                {person.affiliation && <span className="mt-1 block break-words text-xs font-normal text-slate-500 sm:text-sm">{person.affiliation}</span>}
+                {person.affiliation && <span className="mt-1 block truncate text-xs font-normal text-slate-500 @min-[8rem]:text-sm" title={person.affiliation}>{person.affiliation}</span>}
               </span>
-              {person.selectable && <ArrowRight className="hidden shrink-0 sm:block" size={16} aria-hidden="true" />}
+              {person.selectable && <ArrowRight className="hidden shrink-0 @min-[12.5rem]:block" size={16} aria-hidden="true" />}
             </>;
-            return <li className="min-w-0" key={person.id}>{person.selectable
+            return <li className="@container min-w-0" key={person.id}>{person.selectable
               ? <button className="participant-button h-full !gap-2 !px-3 !py-3" type="button" onClick={() => onChoose(person.id)}>{content}</button>
               : <div className="flex h-full min-h-16 items-center gap-2 rounded-2xl border border-slate-200 p-3">{content}</div>}
             </li>;
